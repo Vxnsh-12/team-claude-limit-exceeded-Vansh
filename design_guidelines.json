@@ -1,0 +1,156 @@
+{
+  "theme": "dark",
+  "archetype": "ARCHETYPE 7: ELECTRIC & NEON (Future, Speed, Disruption)",
+  "typography": {
+    "headings": {
+      "font_family": "Unbounded",
+      "weights": ["400", "700", "900"],
+      "usage": "Use for level numbers, XP values, user stats, and main screen titles.",
+      "letter_spacing": "tracking-tighter"
+    },
+    "body": {
+      "font_family": "Manrope",
+      "weights": ["400", "500", "600"],
+      "usage": "Use for quest descriptions, UI labels, buttons, and navigation."
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tighter",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-bold",
+      "body": "text-base leading-relaxed",
+      "small_labels": "text-xs font-bold uppercase tracking-[0.2em]"
+    }
+  },
+  "colors": {
+    "background": {
+      "base": "#050505",
+      "surface": "#0F0F13",
+      "surface_elevated": "#1A1A24"
+    },
+    "accents": {
+      "primary": "#00E5FF",
+      "primary_glow": "rgba(0, 229, 255, 0.4)",
+      "secondary": "#39FF14",
+      "secondary_glow": "rgba(57, 255, 20, 0.4)"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "muted": "#71717A"
+    },
+    "borders": {
+      "subtle": "rgba(255, 255, 255, 0.08)",
+      "active": "rgba(0, 229, 255, 0.3)"
+    }
+  },
+  "surfaces": {
+    "cards": {
+      "background": "bg-[#0F0F13]",
+      "border": "border border-white/5 hover:border-[#00E5FF]/30",
+      "radius": "rounded-3xl",
+      "shadow": "shadow-[0_8px_32px_rgba(0,0,0,0.4)]",
+      "padding": "p-6 sm:p-8",
+      "transition": "transition-all duration-300 ease-out"
+    },
+    "glass": {
+      "background": "bg-[#050505]/60",
+      "backdrop_filter": "backdrop-blur-xl backdrop-saturate-150",
+      "border": "border border-white/10",
+      "radius": "rounded-2xl"
+    }
+  },
+  "layout_and_spacing": {
+    "container": "w-full max-w-md mx-auto min-h-screen bg-[#050505] text-white pb-24",
+    "padding_system": "p-6 sm:p-8",
+    "bento_grid": "grid grid-cols-2 gap-4",
+    "notes": "Use plenty of negative space. Do not cram elements. Containers with borders must have internal padding. Ensure a mobile-first responsive PWA style."
+  },
+  "components": {
+    "bottom_navigation": {
+      "style": "Fixed at bottom, floating above content. Glassmorphism effect. Pill-shaped container.",
+      "classes": "fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-3rem)] max-w-sm h-16 bg-[#0F0F13]/80 backdrop-blur-xl border border-white/10 rounded-full flex justify-around items-center px-2 z-50 shadow-[0_20px_40px_rgba(0,0,0,0.5)]",
+      "active_state": "Text and icon colored in #00E5FF with a subtle drop shadow or background glow. Use framer-motion layoutId for active indicator pill."
+    },
+    "buttons": {
+      "primary": "bg-[#00E5FF] text-black font-bold rounded-full px-6 py-3 hover:shadow-[0_0_20px_rgba(0,229,255,0.4)] transition-all hover:scale-105 active:scale-95",
+      "secondary": "bg-transparent border border-[#39FF14] text-[#39FF14] font-bold rounded-full px-6 py-3 hover:bg-[#39FF14]/10 transition-all active:scale-95",
+      "icon": "h-12 w-12 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 border border-white/5"
+    },
+    "avatars": {
+      "style": "Hexagonal or perfectly round with a neon stroke.",
+      "classes": "rounded-full ring-2 ring-[#00E5FF] ring-offset-2 ring-offset-[#050505] object-cover"
+    },
+    "progress_bars": {
+      "track": "bg-white/10 h-2 rounded-full overflow-hidden",
+      "fill": "bg-gradient-to-r from-[#00E5FF] to-[#39FF14] h-full rounded-full relative"
+    },
+    "tags_badges": {
+      "classes": "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-white/5 border border-white/10 text-white flex items-center gap-2"
+    }
+  },
+  "icons_and_assets": {
+    "library": "lucide-react",
+    "sizing": "w-6 h-6 for nav, w-5 h-5 for inline elements",
+    "stroke_width": "2.5 for a bolder, more game-like feel"
+  },
+  "animations": {
+    "micro_interactions": "Hover states on all cards (subtle lift and border color change to neon). Click/press scale down (active:scale-95).",
+    "entrance": "Staggered fade-up for dashboard widgets and leaderboard lists using framer-motion.",
+    "glow_pulse": "Pulse animation for active quest pins on the map."
+  },
+  "accessibility": {
+    "contrast": "Ensure text over neon colors is dark (#050505) for readability. Muted text should be at least #A1A1AA against #0F0F13.",
+    "focus": "Focus states must ring with #00E5FF.",
+    "test_ids": "All interactive elements MUST have data-testid attributes."
+  },
+  "image_urls": {
+    "avatars": [
+      {
+        "url": "https://images.pexels.com/photos/8107821/pexels-photo-8107821.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "User Profile / Leaderboard",
+        "description": "Cyberpunk woman avatar for player profile"
+      },
+      {
+        "url": "https://images.pexels.com/photos/6940512/pexels-photo-6940512.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "Leaderboard Avatar",
+        "description": "Cyberpunk man avatar for rival player"
+      }
+    ],
+    "badges": [
+      {
+        "url": "https://images.unsplash.com/photo-1770320187499-3916a9711943?crop=entropy&cs=srgb&fm=jpg",
+        "category": "Achievements",
+        "description": "Glowing green 3d object used for a completed quest or unlocked badge icon"
+      }
+    ],
+    "map": [
+      {
+        "url": "https://images.unsplash.com/photo-1668294141622-18e9998a00f6?crop=entropy&cs=srgb&fm=jpg",
+        "category": "Campus Map Background / Quest Thumbnail",
+        "description": "Stylized isometric campus map illustration"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Build a mobile-first PWA layout. The app wrapper should be limited to max-w-md and centered on desktop to mimic a phone screen.",
+    "Use framer-motion for smooth page transitions between the 4 main bottom nav tabs.",
+    "The Bottom Nav Bar MUST float above the content using fixed positioning and z-50. Ensure bottom padding (pb-24) on main content so it is not hidden.",
+    "Implement the 'Map' view with an interactive SVG or standard div-based map using panning/zooming. Plot interactive 'Quest Pins' that pulse.",
+    "XP and Level numbers must use the 'Unbounded' font to feel like a game UI. Ensure they are large and use the neon colors.",
+    "Use Shadcn UI components but heavily override their styles to match this dark neon aesthetic. Strip out standard gray borders.",
+    "Create a Quest Details Modal using Shadcn Dialog, styled with glassmorphism.",
+    "Include a dynamic gamification loop on the dashboard: a level progress ring, current XP, and a daily streak counter.",
+    "NEVER use generic placeholder text or empty avatars. Use the provided image URLs.",
+    "Ensure ALL interactive elements include descriptive data-testid attributes."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Do not use dark colors as gradients. Dark colors look good when used independently.",
+    "Create depth through layered design elements with z-index hierarchy and soft neon shadows.",
+    "Use glass-morphism effects with backdrop filters (blur-xl) and subtle borders.",
+    "DO NOT apply universal transitions (transition: all) as it breaks transforms. Target specific properties.",
+    "DO NOT center align the app container text (no .App { text-align: center; }). Keep text left-aligned unless it's a specific metric.",
+    "Always use modern button styles (pill-shaped) with interaction animations.",
+    "NEVER use emoji characters for icons. Use lucide-react.",
+    "Use sonner for toast notifications (e.g., when a quest is completed or XP is earned)."
+  ]
+}
