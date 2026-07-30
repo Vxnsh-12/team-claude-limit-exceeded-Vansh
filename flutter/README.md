@@ -1,28 +1,35 @@
-# VIT Bhopal Map — Flutter Widget
+# VIT Bhopal Navigation — Flutter App
 
-A high-detail, production-ready `flutter_map` widget for VIT Bhopal campus
-navigation with quest-based gamification.
+Turn-by-turn walking navigation for VIT Bhopal (Kotri Kalan) built with
+`flutter_map` + MapTiler tiles + OpenRouteService directions.
 
-## Files
-- `lib/screens/vit_bhopal_map_screen.dart` — the `VITBhopalMapScreen` widget
-- `lib/screens/vit_navigation_screen.dart` — the `VITNavigationScreen` widget (turn-by-turn walking directions)
+## Layout
 
-## Add these deps to your `pubspec.yaml`
-
-```yaml
-dependencies:
-  flutter:
-    sdk: flutter
-  flutter_map: ^6.0.0
-  latlong2: ^0.9.1
-  geolocator: ^11.0.0
-  http: ^1.2.0
+```
+flutter/
+├── pubspec.yaml
+├── analysis_options.yaml
+├── .gitignore
+├── lib/
+│   ├── main.dart                              # app entrypoint
+│   └── screens/
+│       ├── vit_bhopal_map_screen.dart         # gamified quest map (v1)
+│       └── vit_navigation_screen.dart         # turn-by-turn walking nav
+└── README.md
 ```
 
-Then run:
+## Getting started
+
 ```bash
+cd flutter
 flutter pub get
+flutter run
 ```
+
+`main.dart` is already wired to launch straight into
+`VITNavigationScreen(destination: LatLng(23.075, 76.852), destinationName: 'Academic Block 1', orsApiKey: '<ORS_KEY>')`.
+Update `destination` / `destinationName` / `orsApiKey` in `lib/main.dart` when
+you need a different target or a fresh key.
 
 ## Platform permissions
 
@@ -32,65 +39,37 @@ flutter pub get
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 <uses-permission android:name="android.permission.INTERNET" />
 ```
+Also set `minSdkVersion` ≥ **21** and `compileSdkVersion` ≥ **34** in
+`android/app/build.gradle`.
 
 ### iOS — `ios/Runner/Info.plist`
 ```xml
 <key>NSLocationWhenInUseUsageDescription</key>
-<string>VIT Quest uses your location to unlock check-ins on campus.</string>
+<string>VIT Navigation uses your location to guide you across campus.</string>
 ```
 
-## Usage
+## Third-party keys
 
-```dart
-import 'package:flutter/material.dart';
-import 'screens/vit_bhopal_map_screen.dart';
+| Service | Where it lives | How to get one |
+|---|---|---|
+| MapTiler (base tiles) | `mapTilerApiKey` param of `VITNavigationScreen` — defaults to the key provided in the spec | https://www.maptiler.com/cloud/ (free tier: 100k tiles/mo) |
+| OpenRouteService (walking directions) | `orsApiKey` param of `VITNavigationScreen` — currently the test key in `main.dart` | https://openrouteservice.org/dev/#/signup (free tier: 2 000 requests/day) |
 
-void main() {
-  runApp(const MaterialApp(
-    home: VITBhopalMapScreen(
-      mapTilerApiKey: 'YOUR_MAPTILER_API_KEY',
-    ),
-  ));
-}
-```
+## What `VITNavigationScreen` does
 
-Get a MapTiler key at https://www.maptiler.com/cloud/ (free tier: 100k tiles/mo).
-Get an OpenRouteService key at https://openrouteservice.org/dev/#/signup (free tier: 2 000 requests/day).
-
-## Turn-by-Turn Navigation (`VITNavigationScreen`)
-
-```dart
-import 'package:flutter/material.dart';
-import 'package:latlong2/latlong.dart';
-import 'screens/vit_navigation_screen.dart';
-
-Navigator.of(context).push(MaterialPageRoute(
-  builder: (_) => VITNavigationScreen(
-    destination: const LatLng(23.0787, 76.8528),
-    destinationName: 'Sports Complex',
-    orsApiKey: 'YOUR_ORS_API_KEY',        // https://openrouteservice.org
-    // mapTilerApiKey is already wired to the key you provided
-  ),
-));
-```
-
-### What the widget does
-- Locks the map to `CameraConstraint.contain(LatLngBounds(23.065,76.840)-(23.090,76.865))` and `minZoom: 16.0`
-- Posts to `https://api.openrouteservice.org/v2/directions/foot-walking/geojson`, parses:
-  * `features[0].geometry.coordinates` → route `PolylineLayer` (blue, white border)
-  * `features[0].properties.segments[0].steps` → maneuvers (`instruction`, `distance`, `type`, `way_points`)
-- Renders a floating Google-Maps-style banner at the top with a maneuver icon, remaining distance to the turn, the instruction text, and step counter
-- Streams `Geolocator.getPositionStream(bestForNavigation, distanceFilter: 3)`, computes `Distance().as(LengthUnit.Meter, user, maneuverPoint)`, and auto-advances the queue when < 10 m
-- Rotates + centres the map with `MapController.moveAndRotate(user, 18.0, -heading)` on every position update, so the user's heading is always "up"
-- Bottom progress bar (total remaining + ETA) with an Exit button, and a "recentre" FAB
-
-## Feature checklist
-- [x] Campus centered at `23.0775, 76.8513` · zoom 16.5 (min 15 / max 19)
-- [x] MapTiler `streets-v2` 256-px tiles
-- [x] 6 gamified POIs (AB-1, AB-2, Boys Hostels, Girls Hostels, Central Mess, Sports Complex)
-- [x] Interactive bottom sheet with quest info + XP badge + live distance chip
-- [x] "Start Route" draws a `PolylineLayer` (blueAccent, width 5.0) from user → target
-- [x] "Claim Check-in" enabled only when `Distance().as(LengthUnit.Meter, ...) < 30 m`
-- [x] Live GPS via `Geolocator.getPositionStream` with a pulsating cyan marker
-- [x] Graceful permission handling — inline banner with "Enable" → app settings
-- [x] Rotation disabled (mobile-only interaction flags) + recenter FAB
+- Renders MapTiler `streets-v2` raster tiles, locked to
+  `CameraConstraint.contain(LatLngBounds(23.065, 76.840) → (23.090, 76.865))`
+  with `minZoom: 16.0`
+- POSTs to `https://api.openrouteservice.org/v2/directions/foot-walking/geojson`
+  and parses both:
+  * `features[0].geometry.coordinates` → `PolylineLayer` (blue, white border)
+  * `features[0].properties.segments[0].steps` → maneuvers (`instruction`,
+    `distance`, `type`, `way_points`)
+- Google-Maps-style top banner with maneuver icon, live remaining distance to
+  the turn, instruction, and step counter
+- Streams `Geolocator.getPositionStream(bestForNavigation, distanceFilter: 3)`,
+  computes `Distance().as(LengthUnit.Meter, user, maneuverPoint)` and
+  auto-advances the step queue when < **10 m**
+- Rotates + centres the map with `MapController.moveAndRotate(user, 18.0, -heading)`
+  so the user's heading is always "up"
+- Bottom progress bar (remaining distance + ETA) with Exit button + re-centre FAB
