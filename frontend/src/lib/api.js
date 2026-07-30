@@ -24,6 +24,20 @@ if (stored) {
   api.defaults.headers.common["Authorization"] = `Bearer ${stored}`;
 }
 
+/**
+ * Resolve any avatar / media URL for use in <img src>.
+ * - Absolute URL (http/https) → returned as-is
+ * - Relative `/api/uploads/...` → prepend backend URL and append `?auth=<token>`
+ *   so private uploads can be viewed (public ones ignore the query param)
+ */
+export const resolveMediaUrl = (url) => {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  const token = localStorage.getItem("vq_token");
+  const sep = url.includes("?") ? "&" : "?";
+  return `${BACKEND_URL}${url}${token ? `${sep}auth=${encodeURIComponent(token)}` : ""}`;
+};
+
 export function formatApiErrorDetail(detail) {
   if (detail == null) return "Something went wrong. Please try again.";
   if (typeof detail === "string") return detail;

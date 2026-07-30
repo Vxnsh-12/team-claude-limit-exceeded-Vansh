@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Crown, Medal, Trophy } from "lucide-react";
-import { api } from "../lib/api";
+import { api, resolveMediaUrl } from "../lib/api";
 
 export default function Leaderboard() {
   const [rows, setRows] = useState([]);
@@ -65,7 +65,7 @@ export default function Leaderboard() {
               #{r.rank}
             </div>
             <img
-              src={r.avatar_url}
+              src={resolveMediaUrl(r.avatar_url)}
               alt={r.name}
               className="h-11 w-11 rounded-full bg-[#1A1A24] object-cover ring-1 ring-white/10"
             />
@@ -103,7 +103,7 @@ const Podium = ({ place, row, height, highlight }) => {
     <div className="flex flex-col items-center" data-testid={`podium-${place}`}>
       <div className="relative">
         <img
-          src={row.avatar_url}
+          src={resolveMediaUrl(row.avatar_url)}
           alt={row.name}
           className={`rounded-full object-cover ring-2 ${
             place === 1 ? "h-16 w-16" : "h-12 w-12"

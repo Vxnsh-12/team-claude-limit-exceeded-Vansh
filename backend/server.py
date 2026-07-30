@@ -13,10 +13,13 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Annotated
 from bson import ObjectId
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Form, Header, Query
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, BeforeValidator, ConfigDict
+
+from storage import init_storage, put_object, get_object, APP_NAME
 
 
 # ----- Mongo setup -----
@@ -300,6 +303,241 @@ async def root():
     return {"message": "VIT Quest API", "status": "online"}
 
 
+# ----- File uploads -----
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+ALLOWED_IMAGE = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+ALLOWED_VIDEO = {"video/mp4", "video/quicktime", "video/webm"}
+EXT_FROM_MIME = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+    "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm",
+}
+
+
+def _upload_to_dict(doc: dict, backend_prefix: str = "") -> dict:
+    return {
+        "id": doc["id"],
+        "kind": doc.get("kind"),
+        "quest_id": doc.get("quest_id"),
+        "owner_id": doc.get("owner_id"),
+        "owner_name": doc.get("owner_name"),
+        "owner_avatar": doc.get("owner_avatar"),
+        "content_type": doc.get("content_type"),
+        "is_public": doc.get("is_public", False),
+        "created_at": doc.get("created_at"),
+        "caption": doc.get("caption"),
+        "url": f"{backend_prefix}/api/uploads/{doc['id']}/file",
+    }
+
+
+async def _store_upload(
+    *,
+    user: dict,
+    file: UploadFile,
+    kind: str,  # "avatar" | "quest_proof"
+    quest_id: Optional[str] = None,
+    caption: Optional[str] = None,
+    is_public: bool = False,
+) -> dict:
+    content_type = (file.content_type or "").lower()
+    if kind == "avatar":
+        if content_type not in ALLOWED_IMAGE:
+            raise HTTPException(status_code=400, detail="Avatar must be an image (jpg/png/webp/gif)")
+    else:
+        if content_type not in (ALLOWED_IMAGE | ALLOWED_VIDEO):
+            raise HTTPException(status_code=400, detail="Only images and short videos are allowed")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 20 MB limit")
+
+    ext = EXT_FROM_MIME.get(content_type, "bin")
+    file_id = str(uuid.uuid4())
+    storage_path = f"{APP_NAME}/uploads/{user['_id']}/{file_id}.{ext}"
+
+    try:
+        result = put_object(storage_path, data, content_type)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Storage upload failed: {e}")
+
+    doc = {
+        "id": file_id,
+        "kind": kind,
+        "quest_id": quest_id,
+        "owner_id": str(user["_id"]),
+        "owner_name": user.get("name"),
+        "owner_avatar": user.get("avatar_url"),
+        "storage_path": result.get("path", storage_path),
+        "content_type": content_type,
+        "size": result.get("size", len(data)),
+        "is_public": bool(is_public),
+        "is_deleted": False,
+        "caption": caption,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.uploads.insert_one(doc)
+    return doc
+
+
+@api_router.post("/uploads/avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    doc = await _store_upload(user=user, file=file, kind="avatar", is_public=True)
+    # Point user's avatar_url at this new upload
+    new_url = f"/api/uploads/{doc['id']}/file"
+    await db.users.update_one({"_id": user["_id"]}, {"$set": {"avatar_url": new_url}})
+    return {"upload": _upload_to_dict(doc), "avatar_url": new_url}
+
+
+@api_router.post("/uploads/quest-proof")
+async def upload_quest_proof(
+    quest_id: str = Form(...),
+    caption: Optional[str] = Form(None),
+    is_public: bool = Form(False),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    quest = await db.quests.find_one({"id": quest_id}, {"_id": 0})
+    if not quest:
+        raise HTTPException(status_code=404, detail="Quest not found")
+
+    doc = await _store_upload(
+        user=user, file=file, kind="quest_proof",
+        quest_id=quest_id, caption=caption, is_public=is_public,
+    )
+    # Mark quest complete (idempotent) and award XP if new
+    xp_gained = 0
+    leveled_up = False
+    new_badges: List[str] = []
+    if quest_id not in user.get("completed_quests", []):
+        new_xp = user.get("xp", 0) + quest["xp_reward"]
+        new_level = _xp_to_level(new_xp)
+        completed = user.get("completed_quests", []) + [quest_id]
+        badges = list(user.get("badges", []))
+        if len(completed) == 1 and "first-quest" not in badges:
+            badges.append("first-quest")
+        if len(completed) >= 5 and "explorer" not in badges:
+            badges.append("explorer")
+        if new_level >= 5 and "veteran" not in badges:
+            badges.append("veteran")
+        if quest["category"] == "fitness" and "fit-warrior" not in badges:
+            badges.append("fit-warrior")
+        await db.users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"xp": new_xp, "level": new_level,
+                      "completed_quests": completed, "badges": badges}},
+        )
+        xp_gained = quest["xp_reward"]
+        leveled_up = new_level > user.get("level", 1)
+        new_badges = [b for b in badges if b not in user.get("badges", [])]
+
+    updated_user = await db.users.find_one({"_id": user["_id"]})
+    return {
+        "upload": _upload_to_dict(doc),
+        "user": _serialize_user(updated_user),
+        "xp_gained": xp_gained,
+        "leveled_up": leveled_up,
+        "new_badges": new_badges,
+    }
+
+
+@api_router.get("/uploads/{file_id}/file")
+async def download_upload(
+    file_id: str,
+    auth: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    """Stream a stored file. Public uploads are open to anyone; private uploads
+    require a valid access token via `?auth=<jwt>` or `Authorization: Bearer`."""
+    doc = await db.uploads.find_one({"id": file_id, "is_deleted": False})
+    if not doc:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if not doc.get("is_public"):
+        token = None
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization[7:]
+        elif auth:
+            token = auth
+        if not token:
+            raise HTTPException(status_code=401, detail="Auth required")
+        try:
+            payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+            requester_id = payload.get("sub")
+        except jwt.PyJWTError:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        if requester_id != doc["owner_id"]:
+            # Only owner (or admin) can view private files
+            requester = await db.users.find_one({"_id": ObjectId(requester_id)}) if requester_id else None
+            if not requester or requester.get("role") != "admin":
+                raise HTTPException(status_code=403, detail="Forbidden")
+
+    try:
+        data, ctype = get_object(doc["storage_path"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Storage read failed: {e}")
+
+    return Response(content=data, media_type=doc.get("content_type") or ctype)
+
+
+@api_router.get("/uploads/mine")
+async def list_my_uploads(user: dict = Depends(get_current_user)):
+    docs = await db.uploads.find(
+        {"owner_id": str(user["_id"]), "is_deleted": False}
+    ).sort("created_at", -1).limit(50).to_list(50)
+    return [_upload_to_dict(d) for d in docs]
+
+
+@api_router.put("/uploads/{file_id}/visibility")
+async def toggle_visibility(
+    file_id: str,
+    is_public: bool = Query(...),
+    user: dict = Depends(get_current_user),
+):
+    doc = await db.uploads.find_one({"id": file_id, "is_deleted": False})
+    if not doc:
+        raise HTTPException(status_code=404, detail="File not found")
+    if doc["owner_id"] != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Not your upload")
+    await db.uploads.update_one({"id": file_id}, {"$set": {"is_public": bool(is_public)}})
+    doc["is_public"] = bool(is_public)
+    return _upload_to_dict(doc)
+
+
+@api_router.delete("/uploads/{file_id}")
+async def delete_upload(file_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.uploads.find_one({"id": file_id, "is_deleted": False})
+    if not doc:
+        raise HTTPException(status_code=404, detail="File not found")
+    if doc["owner_id"] != str(user["_id"]) and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not your upload")
+    await db.uploads.update_one({"id": file_id}, {"$set": {"is_deleted": True}})
+    return {"ok": True}
+
+
+@api_router.get("/feed")
+async def public_feed(user: dict = Depends(get_current_user), limit: int = 30):
+    docs = await db.uploads.find(
+        {"is_public": True, "is_deleted": False, "kind": "quest_proof"}
+    ).sort("created_at", -1).limit(min(limit, 50)).to_list(limit)
+    # Attach quest info
+    quest_ids = list({d["quest_id"] for d in docs if d.get("quest_id")})
+    quests = {q["id"]: q for q in await db.quests.find({"id": {"$in": quest_ids}}, {"_id": 0}).to_list(200)}
+    result = []
+    for d in docs:
+        item = _upload_to_dict(d)
+        q = quests.get(d.get("quest_id"))
+        if q:
+            item["quest_title"] = q["title"]
+            item["quest_location"] = q["location"]
+            item["quest_xp"] = q["xp_reward"]
+        result.append(item)
+    return result
+
+
 # ----- Seed data -----
 SEED_LOCATIONS = [
     # Entry
@@ -423,8 +661,15 @@ async def startup_event():
     await db.users.create_index("email", unique=True)
     await db.quests.create_index("id", unique=True)
     await db.locations.create_index("id", unique=True)
+    await db.uploads.create_index("id", unique=True)
+    await db.uploads.create_index([("owner_id", 1), ("created_at", -1)])
+    await db.uploads.create_index([("is_public", 1), ("created_at", -1)])
     await seed_users()
     await seed_content()
+    try:
+        init_storage()
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Object storage init failed: {e}")
 
 
 app.include_router(api_router)
