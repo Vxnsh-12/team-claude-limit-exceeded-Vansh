@@ -1,0 +1,48 @@
+{
+  "summary": "Full-stack testing of 3 new features (VTOP timetable upload, friend requests via leaderboard/nearby, real Join Group). Backend: 12/12 new-feature pytest cases pass. Frontend: 8/8 Playwright assertions pass across Campus Hub, Squad, Leaderboard, and regression checks. No functional regressions from iteration_3.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "n/a - stale baseline tests", "issue": "backend_test.py has 3 outdated assertions (expects 12 quests/locations but seed grew to 16; q-1 XP expectation 120 but is 70). Pre-existing since seed was expanded. Not a regression from this iteration's changes."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Leaderboard bottom of list", "issues": ["Level 1 test users show blank XP number (renders empty text before 'XP' label). Cosmetic only — real users at Lv >1 show XP correctly. Consider defaulting xp to 0 or hiding when 0."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/iter4_new_features.xml"
+  ],
+  "action_items": [
+    "(optional) Update /app/backend/tests/backend_test.py: quest count 12->16, location count 12->16, and re-check q-1 XP reward (70 vs 120). These are stale baseline expectations, not real bugs.",
+    "(optional cosmetic) Leaderboard XP number renders blank for xp=0 rows — display '0' or hide row."
+  ],
+  "critical_code_review_comments": [
+    "server.py:598-636 haversine + nearby: correct math, filters 30-min-stale locations, sorts by distance, excludes self. Good.",
+    "server.py:639-668 friend request auto-accept on mirror reverse request works correctly and adds bidirectional friend_ids via $addToSet — verified in test_mirror_auto_accept.",
+    "server.py:760-810 /timetable/upload validates content_type (allows image/*, pdf, ics, xls/xlsx), 20 MB cap, stores via S3-style put_object, persists file_id on user doc. Solid.",
+    "SquadPage.jsx `nearby` state updates optimistically after send request AND reloads groups after join — both wire correctly to backend.",
+    "CampusHubPage.jsx onFilePicked resets input value so replace-flow re-triggers on same-file selection — good UX detail.",
+    "Leaderboard.jsx correctly hides both the Add button and any friend-status badge on `is_you` row. Verified via DOM inspection.",
+    "SEED_GROUPS auto-seed via db.groups.insert_many uses fixed ids so idempotency check (line 958) prevents duplicate rows on restart.",
+    "Nearby endpoint returns [] when user has no location — frontend correctly shows nearby-empty placeholder.",
+    "Minor: /api/friends/requests POST returns 400 'Request already sent' if a pending outgoing exists — UI currently just shows the detail toast; acceptable."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 new-feature tests)",
+    "frontend": "100% (8/8 Playwright assertions: hub_replace_label, hub_filename_shown, hub_replace_works, nearby_add, group_persist, lb_add_clicked, lb_self_no_btn, five_tab_nav)"
+  },
+  "test_credentials": "player@vitquest.com / player123 and admin@vitquest.com / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Set admin location to (12.96983, 79.15594) so it falls within 50 m of player (12.9698, 79.1559) — required for nearby tests. Uploaded TEST_ui_timetable.pdf then TEST_ui2.pdf as player's timetable. Registered a few TEST_<uuid>@vitquest.com users to validate friend-request full flow and mirror auto-accept.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 3 new features verified end-to-end. Endpoints: POST /api/timetable/upload (multipart) → 200 with {id,filename,size,content_type,url}. GET /api/timetable/me returns {has_timetable, filename, url}. GET /api/groups returns 3 seeded groups (g-ab1-study, g-hackathon, g-fit-squad) with member_count + joined. POST /api/groups/{id}/join and /leave toggle membership. PUT /api/users/location {lat,lng} stores location + timestamp; GET /api/users/nearby?radius_m=50 returns other users within radius using haversine and filters stale (>30 min) locations. POST /api/friends/requests {to_user_id} creates pending; if reverse pending exists it auto-accepts and updates friend_ids on both. Frontend: CampusHubPage sync-vtop → vtop-file-input (hidden) → uploads → button flips to 'Replace Timetable' + shows filename. SquadPage share-location-btn triggers geolocation (context.grant_permissions + set_geolocation for Playwright) → populates nearby rows [data-testid=nearby-<uid>]; clicking [data-testid=add-nearby-<uid>] flips row to 'Requested' or 'Friends'. Group join persists across reload (verified). Leaderboard [data-testid=lb-add-friend-<uid>] fires toast; current user's is_you row (leaderboard-row-8, Player One) correctly has no add button and no friend-status badge. NOTE: To reset a friendship for re-testing, delete the friend_ids array entry and any friend_requests row via mongo, since backend has no unfriend endpoint. NOTE: /app/backend/tests/backend_test.py has 3 stale-baseline assertions (quest/location count 12 vs actual 16, q-1 XP 120 vs actual 70) — not this iteration's regression.",
+  "rca of the issue": "N/A — no bugs found. Two minor observations (stale baseline test counts, blank XP display for Lv-1 zero-XP users) documented above."
+}

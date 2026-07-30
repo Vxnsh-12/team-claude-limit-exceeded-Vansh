@@ -538,6 +538,292 @@ async def public_feed(user: dict = Depends(get_current_user), limit: int = 30):
     return result
 
 
+# ============================================================================
+# Friend requests, nearby users, groups, VTOP timetable
+# ============================================================================
+import math
+
+
+class LocationPing(BaseModel):
+    lat: float
+    lng: float
+
+
+class FriendRequestInput(BaseModel):
+    to_user_id: str
+
+
+def _haversine_m(lat1, lng1, lat2, lng2) -> float:
+    R = 6371000.0
+    p1 = math.radians(lat1); p2 = math.radians(lat2)
+    dp = math.radians(lat2 - lat1); dl = math.radians(lng2 - lng1)
+    a = math.sin(dp/2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl/2) ** 2
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+def _public_user(doc: dict, *, me_id: str, friend_ids: set, pending_out: set, pending_in: set) -> dict:
+    uid = str(doc["_id"])
+    status = "self"
+    if uid != me_id:
+        if uid in friend_ids:
+            status = "friends"
+        elif uid in pending_out:
+            status = "requested"
+        elif uid in pending_in:
+            status = "incoming"
+        else:
+            status = "none"
+    return {
+        "id": uid,
+        "name": doc.get("name"),
+        "avatar_url": doc.get("avatar_url"),
+        "xp": doc.get("xp", 0),
+        "level": doc.get("level", 1),
+        "friend_status": status,
+    }
+
+
+async def _my_friend_context(user: dict):
+    me_id = str(user["_id"])
+    friend_ids = set(user.get("friend_ids", []))
+    outgoing = await db.friend_requests.find(
+        {"from_user_id": me_id, "status": "pending"}
+    ).to_list(200)
+    incoming = await db.friend_requests.find(
+        {"to_user_id": me_id, "status": "pending"}
+    ).to_list(200)
+    return me_id, friend_ids, {r["to_user_id"] for r in outgoing}, {r["from_user_id"] for r in incoming}
+
+
+@api_router.put("/users/location")
+async def update_my_location(payload: LocationPing, user: dict = Depends(get_current_user)):
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {"$set": {
+            "location": {"lat": payload.lat, "lng": payload.lng},
+            "location_updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    return {"ok": True}
+
+
+@api_router.get("/users/nearby")
+async def nearby_users(radius_m: float = 50, user: dict = Depends(get_current_user)):
+    loc = user.get("location")
+    if not loc:
+        return []
+    me_id, friend_ids, pending_out, pending_in = await _my_friend_context(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    candidates = await db.users.find(
+        {"_id": {"$ne": user["_id"]},
+         "location": {"$exists": True},
+         "location_updated_at": {"$gte": cutoff}},
+        {"password_hash": 0}
+    ).to_list(200)
+    result = []
+    for c in candidates:
+        cl = c.get("location") or {}
+        try:
+            d = _haversine_m(loc["lat"], loc["lng"], cl["lat"], cl["lng"])
+        except Exception:
+            continue
+        if d <= radius_m:
+            item = _public_user(c, me_id=me_id, friend_ids=friend_ids,
+                                pending_out=pending_out, pending_in=pending_in)
+            item["distance_m"] = round(d, 1)
+            result.append(item)
+    result.sort(key=lambda x: x["distance_m"])
+    return result
+
+
+@api_router.post("/friends/requests")
+async def send_friend_request(payload: FriendRequestInput, user: dict = Depends(get_current_user)):
+    me_id = str(user["_id"])
+    if payload.to_user_id == me_id:
+        raise HTTPException(status_code=400, detail="Cannot friend yourself")
+    target = await db.users.find_one({"_id": ObjectId(payload.to_user_id)})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if payload.to_user_id in user.get("friend_ids", []):
+        raise HTTPException(status_code=400, detail="Already friends")
+    existing = await db.friend_requests.find_one({
+        "from_user_id": me_id, "to_user_id": payload.to_user_id, "status": "pending"
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="Request already sent")
+    # If they already sent us one, auto-accept
+    reverse = await db.friend_requests.find_one({
+        "from_user_id": payload.to_user_id, "to_user_id": me_id, "status": "pending"
+    })
+    if reverse:
+        await db.friend_requests.update_one({"_id": reverse["_id"]}, {"$set": {"status": "accepted"}})
+        await db.users.update_one({"_id": user["_id"]}, {"$addToSet": {"friend_ids": payload.to_user_id}})
+        await db.users.update_one({"_id": target["_id"]}, {"$addToSet": {"friend_ids": me_id}})
+        return {"status": "accepted"}
+    req_id = str(uuid.uuid4())
+    await db.friend_requests.insert_one({
+        "id": req_id, "from_user_id": me_id, "to_user_id": payload.to_user_id,
+        "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"status": "pending", "id": req_id}
+
+
+@api_router.get("/friends/requests")
+async def list_friend_requests(user: dict = Depends(get_current_user)):
+    me_id = str(user["_id"])
+    incoming = await db.friend_requests.find(
+        {"to_user_id": me_id, "status": "pending"}
+    ).sort("created_at", -1).to_list(50)
+    ids = [ObjectId(r["from_user_id"]) for r in incoming]
+    users = {str(u["_id"]): u for u in await db.users.find({"_id": {"$in": ids}}).to_list(200)}
+    return [{
+        "id": r["id"],
+        "from": {
+            "id": r["from_user_id"],
+            "name": users.get(r["from_user_id"], {}).get("name"),
+            "avatar_url": users.get(r["from_user_id"], {}).get("avatar_url"),
+            "level": users.get(r["from_user_id"], {}).get("level", 1),
+        },
+        "created_at": r["created_at"],
+    } for r in incoming]
+
+
+@api_router.post("/friends/requests/{req_id}/accept")
+async def accept_friend_request(req_id: str, user: dict = Depends(get_current_user)):
+    me_id = str(user["_id"])
+    req = await db.friend_requests.find_one({"id": req_id, "to_user_id": me_id, "status": "pending"})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    await db.friend_requests.update_one({"id": req_id}, {"$set": {"status": "accepted"}})
+    await db.users.update_one({"_id": user["_id"]}, {"$addToSet": {"friend_ids": req["from_user_id"]}})
+    await db.users.update_one({"_id": ObjectId(req["from_user_id"])}, {"$addToSet": {"friend_ids": me_id}})
+    return {"ok": True}
+
+
+@api_router.post("/friends/requests/{req_id}/decline")
+async def decline_friend_request(req_id: str, user: dict = Depends(get_current_user)):
+    await db.friend_requests.update_one(
+        {"id": req_id, "to_user_id": str(user["_id"])},
+        {"$set": {"status": "declined"}},
+    )
+    return {"ok": True}
+
+
+@api_router.get("/friends")
+async def list_friends(user: dict = Depends(get_current_user)):
+    ids = [ObjectId(fid) for fid in user.get("friend_ids", [])]
+    if not ids:
+        return []
+    docs = await db.users.find({"_id": {"$in": ids}}, {"password_hash": 0}).to_list(200)
+    me_id, friend_ids, po, pi = await _my_friend_context(user)
+    return [_public_user(d, me_id=me_id, friend_ids=friend_ids, pending_out=po, pending_in=pi) for d in docs]
+
+
+# ----- Groups -----
+SEED_GROUPS = [
+    {"id": "g-ab1-study",  "name": "AB-1 Study Squad",  "description": "Study jams for AB-1 courses. Meets Wed 6 PM at the Central Library.", "color": "#00E5FF", "icon": "BookOpen"},
+    {"id": "g-hackathon",  "name": "Hackathon Prep",    "description": "Weekly idea drops + team-forming for SIH and campus hackathons.",     "color": "#C084FC", "icon": "Rocket"},
+    {"id": "g-fit-squad",  "name": "Fit Squad",         "description": "Daily 6 AM runs around the Cricket Ground. All fitness levels.",       "color": "#39FF14", "icon": "Dumbbell"},
+]
+
+
+@api_router.get("/groups")
+async def list_groups(user: dict = Depends(get_current_user)):
+    docs = await db.groups.find({}, {"_id": 0}).to_list(200)
+    me_id = str(user["_id"])
+    return [{**g, "member_count": len(g.get("member_ids", [])), "joined": me_id in g.get("member_ids", [])} for g in docs]
+
+
+@api_router.post("/groups/{group_id}/join")
+async def join_group(group_id: str, user: dict = Depends(get_current_user)):
+    me_id = str(user["_id"])
+    g = await db.groups.find_one({"id": group_id})
+    if not g:
+        raise HTTPException(status_code=404, detail="Group not found")
+    await db.groups.update_one({"id": group_id}, {"$addToSet": {"member_ids": me_id}})
+    return {"ok": True, "joined": True}
+
+
+@api_router.post("/groups/{group_id}/leave")
+async def leave_group(group_id: str, user: dict = Depends(get_current_user)):
+    await db.groups.update_one({"id": group_id}, {"$pull": {"member_ids": str(user["_id"])}})
+    return {"ok": True, "joined": False}
+
+
+# ----- VTOP timetable upload -----
+ALLOWED_TIMETABLE = {"application/pdf", "image/jpeg", "image/png", "image/webp",
+                     "text/calendar", "text/plain",
+                     "application/vnd.ms-excel",
+                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+
+
+@api_router.post("/timetable/upload")
+async def upload_timetable(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    content_type = (file.content_type or "").lower()
+    if content_type not in ALLOWED_TIMETABLE and not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only PDF, image, ICS, or Excel timetables are accepted")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 20 MB limit")
+
+    ext = (file.filename or "file").split(".")[-1].lower() if "." in (file.filename or "") else "bin"
+    file_id = str(uuid.uuid4())
+    storage_path = f"{APP_NAME}/timetables/{user['_id']}/{file_id}.{ext}"
+    try:
+        put_object(storage_path, data, content_type or "application/octet-stream")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Storage upload failed: {e}")
+
+    doc = {
+        "id": file_id,
+        "kind": "timetable",
+        "owner_id": str(user["_id"]),
+        "owner_name": user.get("name"),
+        "owner_avatar": user.get("avatar_url"),
+        "storage_path": storage_path,
+        "content_type": content_type or "application/octet-stream",
+        "size": len(data),
+        "is_public": False,
+        "is_deleted": False,
+        "filename": file.filename or f"timetable.{ext}",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.uploads.insert_one(doc)
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"timetable_file_id": file_id,
+                  "timetable_filename": doc["filename"],
+                  "timetable_uploaded_at": doc["created_at"]}},
+    )
+    return {
+        "id": file_id,
+        "filename": doc["filename"],
+        "size": len(data),
+        "content_type": doc["content_type"],
+        "url": f"/api/uploads/{file_id}/file",
+    }
+
+
+@api_router.get("/timetable/me")
+async def my_timetable(user: dict = Depends(get_current_user)):
+    fid = user.get("timetable_file_id")
+    if not fid:
+        return {"has_timetable": False}
+    return {
+        "has_timetable": True,
+        "id": fid,
+        "filename": user.get("timetable_filename"),
+        "uploaded_at": user.get("timetable_uploaded_at"),
+        "url": f"/api/uploads/{fid}/file",
+    }
+
+
 # ----- Seed data -----
 SEED_LOCATIONS = [
     # Entry
@@ -664,8 +950,12 @@ async def startup_event():
     await db.uploads.create_index("id", unique=True)
     await db.uploads.create_index([("owner_id", 1), ("created_at", -1)])
     await db.uploads.create_index([("is_public", 1), ("created_at", -1)])
+    await db.groups.create_index("id", unique=True)
+    await db.friend_requests.create_index("id", unique=True)
     await seed_users()
     await seed_content()
+    if await db.groups.count_documents({}) == 0:
+        await db.groups.insert_many([{**g, "member_ids": []} for g in SEED_GROUPS])
     try:
         init_storage()
     except Exception as e:

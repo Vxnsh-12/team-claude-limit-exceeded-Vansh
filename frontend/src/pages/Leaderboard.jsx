@@ -1,15 +1,36 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Crown, Medal, Trophy } from "lucide-react";
+import { Crown, Medal, Trophy, UserPlus, Check, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { api, resolveMediaUrl } from "../lib/api";
 
 export default function Leaderboard() {
   const [rows, setRows] = useState([]);
   const [scope, setScope] = useState("all");
+  const [friendIds, setFriendIds] = useState(new Set());
+  const [sending, setSending] = useState(null);
 
   useEffect(() => {
     api.get(`/leaderboard?scope=${scope}`).then(({ data }) => setRows(data));
   }, [scope]);
+  useEffect(() => {
+    api.get("/friends").then(({ data }) => setFriendIds(new Set(data.map((u) => u.id)))).catch(() => {});
+  }, []);
+
+  const addFriend = async (r) => {
+    setSending(r.id);
+    try {
+      const { data } = await api.post("/friends/requests", { to_user_id: r.id });
+      if (data.status === "accepted") {
+        setFriendIds((s) => new Set([...s, r.id]));
+        toast(`🎉 You're now friends with ${r.name}`);
+      } else {
+        toast(`✅ Friend request sent to ${r.name}`);
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed");
+    } finally { setSending(null); }
+  };
 
   const top3 = rows.slice(0, 3);
   const rest = rows.slice(3);
@@ -88,6 +109,25 @@ export default function Leaderboard() {
               </div>
               <div className="text-[9px] text-white/40 uppercase tracking-widest font-semibold">XP</div>
             </div>
+            {!r.is_you && (
+              friendIds.has(r.id) ? (
+                <span data-testid={`friend-status-${r.id}`} className="ml-2 h-8 px-2.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#39FF14]/15 border border-[#39FF14]/50 text-[#39FF14] flex items-center gap-1">
+                  <Check size={10} /> Friends
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  data-testid={`lb-add-friend-${r.id}`}
+                  disabled={sending === r.id}
+                  onClick={() => addFriend(r)}
+                  className="ml-2 h-8 w-8 rounded-full bg-[#00E5FF]/12 border border-[#00E5FF]/40 text-[#00E5FF] hover:bg-[#00E5FF]/25 disabled:opacity-50 flex items-center justify-center"
+                  aria-label={`Add ${r.name}`}
+                  title={`Add ${r.name}`}
+                >
+                  {sending === r.id ? <Loader2 size={12} className="animate-spin" /> : <UserPlus size={12} />}
+                </button>
+              )
+            )}
           </motion.div>
         ))}
       </div>

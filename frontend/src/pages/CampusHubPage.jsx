@@ -1,12 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
-import { UploadCloud, Loader2, MapPin, Clock, User, AlertTriangle, X } from "lucide-react";
+import { UploadCloud, Loader2, MapPin, Clock, User, AlertTriangle, X, FileCheck2 } from "lucide-react";
 import { toast } from "sonner";
 import Dashboard from "@/pages/Dashboard";
+import { api } from "@/lib/api";
 
 export default function CampusHubPage() {
   const [syncing, setSyncing] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
+  const [uploaded, setUploaded] = useState(null);
   const alertFiredRef = useRef(false);
+  const fileInputRef = useRef(null);
 
   // Mock next-class time = mount + 15 min + 12 sec, so the alert fires ~12 s after entering the tab.
   const classStartRef = useRef(new Date(Date.now() + (15 * 60 + 12) * 1000));
@@ -15,29 +18,49 @@ export default function CampusHubPage() {
     const timer = setInterval(() => {
       if (alertFiredRef.current) return;
       const minsUntil = (classStartRef.current.getTime() - Date.now()) / 60000;
-      // Fire once the class is within 15 min but hasn't started yet.
-      // (Wider window than the exact 30-s slice so a backgrounded/throttled
-      // tab doesn't miss the alert.)
       if (minsUntil <= 15 && minsUntil > 0) {
         alertFiredRef.current = true;
         setAlertOpen(true);
       }
     }, 5000);
+    api.get("/timetable/me").then(({ data }) => data?.has_timetable && setUploaded(data)).catch(() => {});
     return () => clearInterval(timer);
   }, []);
 
   const handleSync = async () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const onFilePicked = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 20 * 1024 * 1024) {
+      toast.error("File too large — max 20 MB");
+      return;
+    }
     setSyncing(true);
-    await new Promise((r) => setTimeout(r, 2000));
-    setSyncing(false);
-    toast("✅ VTOP Schedule Synced Successfully", {
-      style: {
-        background: "#0F0F13",
-        border: "1px solid rgba(57,255,20,0.5)",
-        color: "#fff",
-        fontWeight: 700,
-      },
-    });
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      await api.post("/timetable/upload", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const { data } = await api.get("/timetable/me");
+      setUploaded(data);
+      toast("✅ VTOP Schedule Synced Successfully", {
+        style: {
+          background: "#0F0F13",
+          border: "1px solid rgba(57,255,20,0.5)",
+          color: "#fff",
+          fontWeight: 700,
+        },
+      });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.message || "Upload failed");
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const classTimeStr = classStartRef.current.toLocaleTimeString([], {
@@ -77,8 +100,25 @@ export default function CampusHubPage() {
           className="mt-4 w-full h-11 rounded-full bg-black/85 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-black transition-colors active:scale-[0.98] disabled:opacity-70"
         >
           {syncing ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
-          {syncing ? "Syncing VTOP…" : "Upload VTOP Timetable"}
+          {syncing ? "Syncing VTOP…" : uploaded ? "Replace Timetable" : "Upload VTOP Timetable"}
         </button>
+        <input
+          ref={fileInputRef}
+          data-testid="vtop-file-input"
+          type="file"
+          accept=".pdf,.ics,.jpg,.jpeg,.png,.webp,.xls,.xlsx,image/*,application/pdf,text/calendar"
+          className="hidden"
+          onChange={onFilePicked}
+        />
+        {uploaded && (
+          <div
+            data-testid="vtop-uploaded-info"
+            className="mt-2 flex items-center gap-2 text-black/85 text-[11px] font-bold"
+          >
+            <FileCheck2 size={12} />
+            <span className="truncate">{uploaded.filename}</span>
+          </div>
+        )}
       </div>
 
       {/* Existing Quests + Community feed via Dashboard */}
