@@ -1,423 +1,625 @@
-import React, { useEffect, useState, useMemo } from "react";
-import { motion } from "framer-motion";
-import { MapPin, Compass, Zap } from "lucide-react";
-import { api } from "../lib/api";
-import { QuestModal } from "../components/QuestModal";
+import React, { useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Search, X, Navigation, MapPin, Compass, Plus, Minus,
+  ArrowRight, Building2, LocateFixed,
+} from "lucide-react";
+import {
+  BUILDINGS, BUILDINGS_BY_ID, CATEGORIES, MAP_VIEWBOX,
+  MAIN_ENTRY, ROADS, TREES,
+} from "../data/campusMap";
 
-const typeColor = {
-  academic:   "#00E5FF",
-  food:       "#FF8A3D",
-  fitness:    "#39FF14",
-  event:      "#C084FC",
-  residence:  "#94A3B8",
-  entry:      "#F1F5F9",
-  recreation: "#39FF14",
-  utility:    "#F59E0B",
-};
+// -----------------------------------------------------------------------------
+// Helper — build an SVG points string for the route polyline
+// -----------------------------------------------------------------------------
+const pointsFromRoute = (pts) => pts.map((p) => `${p.x},${p.y}`).join(" ");
 
-const typeLabel = {
-  academic: "Academic", food: "Food", fitness: "Sports",
-  event: "Event", residence: "Hostel", entry: "Gate",
-  recreation: "Plaza", utility: "Utility",
-};
-
-// --- Static decorations (VIT Bhopal illustrated layout) ---
-const ZONES = [
-  { label: "ACADEMIC ZONE",    x: 380, y: 90,  w: 500, h: 240, color: "#00E5FF" },
-  { label: "RESIDENTIAL",       x: 130, y: 480, w: 220, h: 100, color: "#94A3B8" },
-  { label: "SPORTS ZONE",       x: 690, y: 290, w: 200, h: 130, color: "#39FF14" },
-  { label: "CENTRAL",           x: 380, y: 400, w: 220, h: 90,  color: "#C084FC" },
-];
-
-const TREES = [
-  [ 90,  200], [155, 155], [ 70,  380], [ 40,  460], [140, 390],
-  [560, 100], [640, 100], [720, 130], [810, 200], [770, 400],
-  [255, 470], [305, 520], [460, 530], [590, 520], [660, 550],
-  [750, 500], [420, 250], [520, 260], [610, 300], [ 20,  260],
-];
-
-// A small lake near the boys hostel
-const LAKE = { cx: 620, cy: 380, rx: 42, ry: 22 };
-
+// -----------------------------------------------------------------------------
+// Main screen
+// -----------------------------------------------------------------------------
 export default function MapPage() {
-  const [locations, setLocations] = useState([]);
-  const [quests, setQuests] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [destination, setDestination] = useState(null);
+  const [query, setQuery] = useState("");
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
 
-  useEffect(() => {
-    Promise.all([api.get("/locations"), api.get("/quests")]).then(([l, q]) => {
-      setLocations(l.data);
-      setQuests(q.data);
+  const filtered = useMemo(() => {
+    if (!query.trim()) return [];
+    const q = query.trim().toLowerCase();
+    return BUILDINGS.filter(
+      (b) => b.name.toLowerCase().includes(q) || b.full.toLowerCase().includes(q)
+    ).slice(0, 6);
+  }, [query]);
+
+  const route = destination ? BUILDINGS_BY_ID[destination]?.route : null;
+
+  const centerOn = (b) => {
+    if (!b) return;
+    const cx = b.x !== undefined ? b.x + (b.w || 60) / 2 : b.labelX ?? MAP_VIEWBOX.w / 2;
+    const cy = b.y !== undefined ? b.y + (b.h || 60) / 2 : b.labelY ?? MAP_VIEWBOX.h / 2;
+    setZoom(1.6);
+    // Convert into pan offset (SVG uses viewBox, so we translate the wrapper).
+    // The wrapper is transformed via CSS: translate(pan)% then scale(zoom).
+    setPan({
+      x: 50 - (cx / MAP_VIEWBOX.w) * 100,
+      y: 50 - (cy / MAP_VIEWBOX.h) * 100,
     });
-  }, []);
-
-  const questsByLoc = useMemo(() => {
-    const m = {};
-    for (const q of quests) {
-      if (!m[q.location_id]) m[q.location_id] = [];
-      m[q.location_id].push(q);
-    }
-    return m;
-  }, [quests]);
-
-  const openQuestForLocation = (locId) => {
-    const list = (questsByLoc[locId] || []).filter((q) => !q.completed);
-    if (list[0]) setSelected(list[0]);
   };
 
-  const activeCount = quests.filter((q) => !q.completed).length;
+  const handlePick = (b) => {
+    setSelected(b);
+    setQuery("");
+    centerOn(b);
+  };
+
+  const startDirections = (b) => {
+    setDestination(b.id);
+    setSelected(null);
+    centerOn(b);
+  };
+
+  const resetView = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setDestination(null);
+    setSelected(null);
+  };
 
   return (
-    <div className="px-6 pt-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.3em] text-white/50 font-semibold">
-            VIT Bhopal
-          </div>
-          <h1 className="font-display text-2xl font-black tracking-tight mt-1">
-            Explore <span className="text-[#39FF14]">Campus</span>
-          </h1>
-        </div>
-        <div className="glass rounded-full px-3 py-2 flex items-center gap-2">
-          <Compass size={14} className="text-[#00E5FF]" />
-          <span className="font-display text-xs font-black tracking-wide">
-            {activeCount}
-          </span>
-          <span className="text-[10px] uppercase tracking-widest text-white/50 font-semibold">
-            active
-          </span>
-        </div>
-      </div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="mt-6 rounded-3xl overflow-hidden border border-white/8 bg-[#0A0A12] relative"
-        style={{ aspectRatio: "4/5" }}
-        data-testid="campus-map"
-      >
-        <svg viewBox="0 0 800 620" className="w-full h-full block">
-          <defs>
-            {/* Base gradient */}
-            <linearGradient id="mapBg" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#0A0A12" />
-              <stop offset="60%" stopColor="#070710" />
-              <stop offset="100%" stopColor="#050508" />
-            </linearGradient>
-            {/* Faint dot grid */}
-            <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
-              <circle cx="1" cy="1" r="0.8" fill="rgba(255,255,255,0.05)" />
-            </pattern>
-            {/* Ground / green regions */}
-            <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(57,255,20,0.08)" />
-              <stop offset="100%" stopColor="rgba(57,255,20,0.02)" />
-            </linearGradient>
-            {/* Lake gradient */}
-            <radialGradient id="lake" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="rgba(0,229,255,0.55)" />
-              <stop offset="100%" stopColor="rgba(0,229,255,0.05)" />
-            </radialGradient>
-            {/* Building fill */}
-            <linearGradient id="bldg" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#171725" />
-              <stop offset="100%" stopColor="#0E0E18" />
-            </linearGradient>
-            {/* Glow filter */}
-            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="3" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-
-          {/* Background */}
-          <rect width="800" height="620" fill="url(#mapBg)" />
-          <rect width="800" height="620" fill="url(#dots)" />
-
-          {/* Green ground blob */}
-          <path
-            d="M 0 300 Q 200 220, 400 260 T 800 220 L 800 620 L 0 620 Z"
-            fill="url(#green)"
+    <div className="relative min-h-screen w-full bg-[#FBF7F0]" data-testid="campus-nav-map">
+      {/* Search bar */}
+      <div className="absolute top-4 inset-x-4 z-30">
+        <div
+          className="bg-white rounded-2xl shadow-[0_10px_30px_rgba(31,42,68,0.18)] border border-black/5 flex items-center px-3 h-11"
+          data-testid="map-search"
+        >
+          <Search size={16} className="text-[#1F2A44]/60" />
+          <input
+            data-testid="map-search-input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search buildings (e.g. A.B. 1, Mayuri, Cricket)"
+            className="flex-1 bg-transparent outline-none px-2 text-sm text-[#1F2A44] placeholder:text-[#1F2A44]/40 font-medium"
           />
-
-          {/* Zones */}
-          {ZONES.map((z) => (
-            <g key={z.label}>
-              <rect
-                x={z.x - z.w / 2}
-                y={z.y - z.h / 2}
-                width={z.w}
-                height={z.h}
-                rx="26"
-                fill={z.color}
-                fillOpacity="0.04"
-                stroke={z.color}
-                strokeOpacity="0.18"
-                strokeDasharray="3 5"
-                strokeWidth="1"
-              />
-              <text
-                x={z.x - z.w / 2 + 14}
-                y={z.y - z.h / 2 + 20}
-                fill={z.color}
-                fillOpacity="0.55"
-                fontSize="9"
-                fontWeight="800"
-                letterSpacing="2.5"
-                fontFamily="Manrope, sans-serif"
-              >
-                {z.label}
-              </text>
-            </g>
-          ))}
-
-          {/* Curved roads */}
-          <g stroke="rgba(255,255,255,0.15)" strokeWidth="10" fill="none" strokeLinecap="round" opacity="0.5">
-            <path d="M 60 540 Q 200 500, 350 470 T 690 470" />
-            <path d="M 350 470 Q 380 380, 390 300 T 480 180" />
-            <path d="M 210 180 Q 300 240, 300 280 T 480 300" />
-            <path d="M 560 180 Q 620 220, 680 230 T 720 340" />
-            <path d="M 130 470 Q 100 400, 110 320 T 170 260" />
-          </g>
-          <g stroke="#00E5FF" strokeOpacity="0.35" strokeWidth="1.5" fill="none" strokeDasharray="4 8" strokeLinecap="round">
-            <path d="M 60 540 Q 200 500, 350 470 T 690 470" />
-            <path d="M 350 470 Q 380 380, 390 300 T 480 180" />
-            <path d="M 210 180 Q 300 240, 300 280 T 480 300" />
-            <path d="M 560 180 Q 620 220, 680 230 T 720 340" />
-            <path d="M 130 470 Q 100 400, 110 320 T 170 260" />
-          </g>
-
-          {/* Lake */}
-          <g>
-            <ellipse cx={LAKE.cx} cy={LAKE.cy} rx={LAKE.rx} ry={LAKE.ry} fill="url(#lake)" />
-            <ellipse cx={LAKE.cx} cy={LAKE.cy} rx={LAKE.rx} ry={LAKE.ry} fill="none" stroke="#00E5FF" strokeOpacity="0.5" strokeWidth="1" />
-            <ellipse cx={LAKE.cx - 8} cy={LAKE.cy - 4} rx={LAKE.rx * 0.55} ry={LAKE.ry * 0.5} fill="none" stroke="#00E5FF" strokeOpacity="0.35" strokeWidth="1" />
-            <text x={LAKE.cx} y={LAKE.cy + 4} textAnchor="middle" fill="#00E5FF" fillOpacity="0.7" fontSize="8" fontWeight="700" letterSpacing="1.5" fontFamily="Manrope, sans-serif">
-              CAMPUS LAKE
-            </text>
-          </g>
-
-          {/* Trees */}
-          {TREES.map(([x, y], i) => (
-            <g key={i} transform={`translate(${x} ${y})`}>
-              <circle r="6" fill="#0F2417" stroke="#39FF14" strokeOpacity="0.4" strokeWidth="1" />
-              <circle r="3" fill="#39FF14" fillOpacity="0.35" />
-            </g>
-          ))}
-
-          {/* Buildings (per location) */}
-          {locations.map((loc) => {
-            const color = typeColor[loc.type] || "#00E5FF";
-            const isBig = ["academic", "residence"].includes(loc.type);
-            const w = isBig ? 62 : 44;
-            const h = isBig ? 44 : 32;
-            return (
-              <g key={`b-${loc.id}`} transform={`translate(${loc.x} ${loc.y})`}>
-                {/* Base shadow */}
-                <ellipse cx="0" cy={h / 2 + 6} rx={w / 2} ry="4" fill="rgba(0,0,0,0.5)" />
-                {/* Building body */}
-                <rect
-                  x={-w / 2}
-                  y={-h / 2}
-                  width={w}
-                  height={h}
-                  rx="8"
-                  fill="url(#bldg)"
-                  stroke={color}
-                  strokeOpacity="0.6"
-                  strokeWidth="1.5"
-                />
-                {/* Roof accent */}
-                <rect x={-w / 2 + 4} y={-h / 2 + 3} width={w - 8} height="3" rx="1.5" fill={color} fillOpacity="0.5" />
-                {/* Windows grid */}
-                {[0, 1, 2].map((row) =>
-                  [0, 1, 2, 3].slice(0, isBig ? 4 : 3).map((col) => (
-                    <rect
-                      key={`${row}-${col}`}
-                      x={-w / 2 + 8 + col * ((w - 20) / (isBig ? 3 : 2))}
-                      y={-h / 2 + 12 + row * 8}
-                      width="4"
-                      height="5"
-                      rx="1"
-                      fill={color}
-                      fillOpacity={(row + col) % 2 === 0 ? "0.6" : "0.2"}
-                    />
-                  ))
-                )}
-              </g>
-            );
-          })}
-
-          {/* Quest pins */}
-          {locations.map((loc) => {
-            const hasQuest = (questsByLoc[loc.id] || []).some((q) => !q.completed);
-            const color = typeColor[loc.type] || "#00E5FF";
-            return (
-              <g
-                key={loc.id}
-                transform={`translate(${loc.x} ${loc.y - 34})`}
-                style={{ cursor: hasQuest ? "pointer" : "default" }}
-                onClick={() => hasQuest && openQuestForLocation(loc.id)}
-                data-testid={`map-pin-${loc.id}`}
-              >
-                {/* Invisible bigger hit target */}
-                <circle r="26" fill="transparent" pointerEvents="all" />
-                {hasQuest && (
-                  <>
-                    <circle
-                      r="18"
-                      fill={color}
-                      fillOpacity="0.35"
-                      className="pulse-ring"
-                      style={{ transformOrigin: "center" }}
-                      pointerEvents="none"
-                    />
-                    {/* Pin base drop */}
-                    <path
-                      d="M 0 -14 Q -9 -14 -9 -6 Q -9 2 0 12 Q 9 2 9 -6 Q 9 -14 0 -14 Z"
-                      fill={color}
-                      pointerEvents="none"
-                      filter="url(#glow)"
-                    />
-                    <circle cx="0" cy="-6" r="3" fill="#050505" pointerEvents="none" />
-                  </>
-                )}
-                {!hasQuest && (
-                  <>
-                    <circle r="7" fill={color} fillOpacity="0.35" pointerEvents="none" />
-                    <circle r="4" fill={color} pointerEvents="none" />
-                  </>
-                )}
-              </g>
-            );
-          })}
-
-          {/* Location name labels */}
-          {locations.map((loc) => (
-            <text
-              key={`t-${loc.id}`}
-              x={loc.x}
-              y={loc.y + (["academic", "residence"].includes(loc.type) ? 34 : 28)}
-              textAnchor="middle"
-              fill="#ffffff"
-              fillOpacity="0.75"
-              fontSize="8.5"
-              fontWeight="700"
-              letterSpacing="0.4"
-              fontFamily="Manrope, sans-serif"
-              pointerEvents="none"
-            >
-              {loc.name.length > 22 ? loc.name.slice(0, 21) + "…" : loc.name}
-            </text>
-          ))}
-
-          {/* Compass rose */}
-          <g transform="translate(750 70)">
-            <circle r="24" fill="#0F0F13" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-            <path d="M 0 -16 L 4 0 L 0 16 L -4 0 Z" fill="#00E5FF" fillOpacity="0.8" />
-            <path d="M -16 0 L 0 4 L 16 0 L 0 -4 Z" fill="rgba(255,255,255,0.2)" />
-            <text y="-28" textAnchor="middle" fill="#00E5FF" fontSize="9" fontWeight="900" fontFamily="Unbounded, sans-serif">N</text>
-          </g>
-
-          {/* Scale indicator */}
-          <g transform="translate(40 590)">
-            <line x1="0" y1="0" x2="80" y2="0" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
-            <line x1="0" y1="-4" x2="0" y2="4" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
-            <line x1="80" y1="-4" x2="80" y2="4" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
-            <text x="40" y="-8" textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize="9" fontWeight="700" letterSpacing="1" fontFamily="Manrope, sans-serif">
-              100 M
-            </text>
-          </g>
-
-          {/* Watermark */}
-          <text
-            x="400"
-            y="605"
-            textAnchor="middle"
-            fill="rgba(255,255,255,0.15)"
-            fontSize="10"
-            fontWeight="900"
-            letterSpacing="6"
-            fontFamily="Unbounded, sans-serif"
-          >
-            VIT · BHOPAL
-          </text>
-        </svg>
-
-        {/* Legend overlay */}
-        <div className="absolute left-3 top-3 flex items-center gap-2 flex-wrap max-w-[70%]">
-          <LegendChip color="#00E5FF" label="Academic" />
-          <LegendChip color="#39FF14" label="Sports" />
-          <LegendChip color="#FF8A3D" label="Food" />
-          <LegendChip color="#C084FC" label="Event" />
-          <LegendChip color="#94A3B8" label="Hostel" />
-        </div>
-      </motion.div>
-
-      {/* Nearby quests list */}
-      <div className="flex items-baseline justify-between mt-6">
-        <h2 className="font-display text-lg font-bold tracking-tight">Nearby Quests</h2>
-        <span className="text-[10px] uppercase tracking-[0.25em] text-white/40 font-semibold">
-          Tap a pin or row
-        </span>
-      </div>
-
-      <div className="mt-3 space-y-2">
-        {locations.map((loc) => {
-          const active = (questsByLoc[loc.id] || []).filter((q) => !q.completed);
-          if (active.length === 0) return null;
-          return (
+          {query && (
             <button
-              key={loc.id}
-              data-testid={`nearby-quest-${loc.id}`}
-              onClick={() => setSelected(active[0])}
-              className="w-full flex items-center gap-3 rounded-2xl border border-white/6 bg-[#0F0F13] p-3 hover:border-[#00E5FF]/40 transition-colors text-left"
+              onClick={() => setQuery("")}
+              className="p-1 rounded-full hover:bg-black/5"
+              aria-label="Clear search"
             >
-              <div
-                className="h-9 w-9 rounded-xl flex items-center justify-center border"
-                style={{
-                  borderColor: `${typeColor[loc.type] || "#00E5FF"}55`,
-                  background: `${typeColor[loc.type] || "#00E5FF"}12`,
-                }}
-              >
-                <MapPin size={14} style={{ color: typeColor[loc.type] || "#00E5FF" }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-bold text-white truncate">{loc.name}</div>
-                <div className="text-[10px] text-white/40 truncate">
-                  {typeLabel[loc.type] || loc.type} · {active[0].title}
-                </div>
-              </div>
-              <div className="flex items-center gap-1 text-[#39FF14] font-display font-black">
-                <Zap size={12} /> {active[0].xp_reward}
-              </div>
+              <X size={14} className="text-[#1F2A44]/60" />
             </button>
-          );
-        })}
+          )}
+        </div>
+        {filtered.length > 0 && (
+          <div
+            data-testid="search-results"
+            className="mt-1 bg-white rounded-2xl shadow-[0_10px_30px_rgba(31,42,68,0.15)] border border-black/5 overflow-hidden"
+          >
+            {filtered.map((b) => (
+              <button
+                key={b.id}
+                data-testid={`search-result-${b.id}`}
+                onClick={() => handlePick(b)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-black/[0.03] text-left"
+              >
+                <span
+                  className="h-8 w-8 rounded-lg flex items-center justify-center border"
+                  style={{
+                    background: CATEGORIES[b.category].color,
+                    borderColor: CATEGORIES[b.category].stroke + "55",
+                  }}
+                >
+                  <Building2 size={14} className="text-[#1F2A44]" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold text-[#1F2A44] truncate">{b.name}</div>
+                  <div className="text-[11px] text-[#1F2A44]/50 truncate">
+                    {CATEGORIES[b.category].label} · {b.full}
+                  </div>
+                </div>
+                <ArrowRight size={14} className="text-[#1F2A44]/40" />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <QuestModal
-        quest={selected}
-        open={!!selected}
-        onClose={() => setSelected(null)}
-        onCompleted={() => {
-          api.get("/quests").then(({ data }) => setQuests(data));
-        }}
-      />
+      {/* Zoom / reset controls */}
+      <div className="absolute right-4 top-24 z-20 flex flex-col gap-2">
+        <ControlBtn onClick={() => setZoom((z) => Math.min(2.5, z + 0.25))} testid="zoom-in">
+          <Plus size={16} />
+        </ControlBtn>
+        <ControlBtn onClick={() => setZoom((z) => Math.max(1, z - 0.25))} testid="zoom-out">
+          <Minus size={16} />
+        </ControlBtn>
+        <ControlBtn onClick={resetView} testid="reset-view">
+          <LocateFixed size={16} />
+        </ControlBtn>
+      </div>
+
+      {/* Legend */}
+      <MapLegend />
+
+      {/* SVG map area */}
+      <div className="absolute inset-0 top-0 bg-[#FBF7F0] overflow-hidden">
+        <div
+          className="w-full h-full"
+          style={{
+            transform: `translate(${pan.x}%, ${pan.y}%) scale(${zoom})`,
+            transformOrigin: "50% 50%",
+            transition: "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
+          }}
+        >
+          <CampusSVG
+            selected={selected}
+            destination={destination}
+            route={route}
+            onBuildingTap={handlePick}
+          />
+        </div>
+      </div>
+
+      {/* Bottom sheet */}
+      <AnimatePresence>
+        {selected && (
+          <BuildingSheet
+            building={selected}
+            onClose={() => setSelected(null)}
+            onDirections={() => startDirections(selected)}
+          />
+        )}
+        {!selected && destination && (
+          <DirectionsSheet
+            building={BUILDINGS_BY_ID[destination]}
+            onClose={() => setDestination(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-const LegendChip = ({ color, label }) => (
-  <div className="glass rounded-full px-2.5 py-1 flex items-center gap-1.5 text-[10px] font-semibold tracking-wide">
-    <span
-      className="h-2 w-2 rounded-full"
-      style={{ background: color, boxShadow: `0 0 8px ${color}` }}
-    />
-    {label}
+// -----------------------------------------------------------------------------
+// SVG map
+// -----------------------------------------------------------------------------
+const CampusSVG = ({ selected, destination, route, onBuildingTap }) => {
+  return (
+    <svg
+      viewBox={`0 0 ${MAP_VIEWBOX.w} ${MAP_VIEWBOX.h}`}
+      className="w-full h-full block"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <pattern id="paper" width="240" height="240" patternUnits="userSpaceOnUse">
+          <rect width="240" height="240" fill="#FBF7F0" />
+          <circle cx="30" cy="60" r="0.6" fill="rgba(31,42,68,0.05)" />
+          <circle cx="120" cy="130" r="0.6" fill="rgba(31,42,68,0.04)" />
+          <circle cx="200" cy="200" r="0.6" fill="rgba(31,42,68,0.05)" />
+        </pattern>
+        <linearGradient id="cricketGrass" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#B8D992" />
+          <stop offset="100%" stopColor="#9EC474" />
+        </linearGradient>
+        <linearGradient id="porcellGrass" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#C7E4A4" />
+          <stop offset="100%" stopColor="#AAD07F" />
+        </linearGradient>
+        <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="3" />
+        </filter>
+      </defs>
+
+      {/* Paper base */}
+      <rect width={MAP_VIEWBOX.w} height={MAP_VIEWBOX.h} fill="url(#paper)" />
+
+      {/* Roads — outer stroke */}
+      <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+        {ROADS.map((r, i) => (
+          <path key={`ro-${i}`} d={r.d} stroke="#BFBFBF" strokeWidth={r.w} />
+        ))}
+        {ROADS.map((r, i) => (
+          <path key={`ri-${i}`} d={r.d} stroke="#E8E8E8" strokeWidth={r.w - 12} />
+        ))}
+        {/* Dashed centreline */}
+        {ROADS.map((r, i) => (
+          <path
+            key={`rc-${i}`}
+            d={r.d}
+            stroke="#FFFFFF"
+            strokeWidth="2"
+            strokeDasharray="10 12"
+          />
+        ))}
+      </g>
+
+      {/* Route polyline (drawn above the roads but below the buildings) */}
+      {route && (
+        <g>
+          <polyline
+            points={pointsFromRoute(route)}
+            fill="none"
+            stroke="#1A73E8"
+            strokeOpacity="0.25"
+            strokeWidth="14"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <polyline
+            points={pointsFromRoute(route)}
+            fill="none"
+            stroke="#1A73E8"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="14 10"
+            data-testid="route-polyline"
+          >
+            <animate
+              attributeName="stroke-dashoffset"
+              from="0"
+              to="-72"
+              dur="1.4s"
+              repeatCount="indefinite"
+            />
+          </polyline>
+        </g>
+      )}
+
+      {/* Green ground shapes for sports/open zones (rendered before rectangles) */}
+      {BUILDINGS.filter((b) => b.category === "sports" && b.shape === "blob").map((b) => (
+        <g key={`grass-${b.id}`}>
+          <path d={b.d} fill="url(#porcellGrass)" stroke="#7BAF52" strokeWidth="2" />
+        </g>
+      ))}
+
+      {/* Trees */}
+      {TREES.map(([x, y], i) => (
+        <g key={`t-${i}`} transform={`translate(${x} ${y})`}>
+          <ellipse cx="0" cy="4" rx="8" ry="3" fill="rgba(0,0,0,0.08)" />
+          <circle cx="0" cy="0" r="7" fill="#7BAF52" />
+          <circle cx="-2" cy="-2" r="4" fill="#96C46A" />
+        </g>
+      ))}
+
+      {/* Buildings */}
+      {BUILDINGS.map((b) => (
+        <BuildingNode
+          key={b.id}
+          b={b}
+          selected={selected?.id === b.id || destination === b.id}
+          onTap={() => onBuildingTap(b)}
+        />
+      ))}
+
+      {/* Main entry marker */}
+      <g transform={`translate(${MAIN_ENTRY.x + 30} ${MAIN_ENTRY.y - 25})`}>
+        <rect x="-40" y="-14" width="80" height="20" rx="10" fill="#FFFFFF" stroke="#1F2A44" strokeWidth="1" />
+        <text textAnchor="middle" y="0" fill="#1F2A44" fontSize="11" fontWeight="800" letterSpacing="0.5" fontFamily="Manrope, sans-serif">
+          Main entry
+        </text>
+      </g>
+
+      {/* Highway label */}
+      <text x="440" y="90" fill="#1F2A44" fillOpacity="0.6" fontSize="16" fontWeight="700" letterSpacing="1" fontFamily="Manrope, sans-serif">
+        Highway
+      </text>
+
+      {/* Title band */}
+      <g>
+        <text
+          x={MAP_VIEWBOX.w / 2}
+          y="42"
+          textAnchor="middle"
+          fill="#1F2A44"
+          fillOpacity="0.15"
+          fontSize="30"
+          fontWeight="900"
+          letterSpacing="8"
+          fontFamily="Unbounded, sans-serif"
+        >
+          VIT BHOPAL
+        </text>
+      </g>
+
+      {/* Compass */}
+      <g transform="translate(80 940)">
+        <circle r="28" fill="#FFFFFF" stroke="#1F2A44" strokeOpacity="0.25" strokeWidth="1.5" />
+        <path d="M 0 -20 L 5 0 L 0 20 L -5 0 Z" fill="#1F2A44" />
+        <path d="M -18 0 L 0 4 L 18 0 L 0 -4 Z" fill="#1F2A44" fillOpacity="0.25" />
+        <text y="-34" textAnchor="middle" fill="#1F2A44" fontSize="14" fontWeight="900" fontFamily="Unbounded, sans-serif">N</text>
+      </g>
+    </svg>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// Building rendered on the SVG
+// -----------------------------------------------------------------------------
+const BuildingNode = ({ b, selected, onTap }) => {
+  const cat = CATEGORIES[b.category];
+  const strokeW = selected ? 3.5 : 1.6;
+  const strokeCol = selected ? "#1A73E8" : cat.stroke;
+
+  if (b.shape === "blob") {
+    return (
+      <g
+        onClick={onTap}
+        style={{ cursor: "pointer" }}
+        data-testid={`building-${b.id}`}
+      >
+        <path d={b.d} fill={cat.color} stroke={strokeCol} strokeWidth={strokeW} />
+        <text
+          x={b.labelX}
+          y={b.labelY}
+          textAnchor="middle"
+          fill="#1F2A44"
+          fontSize={b.labelSize}
+          fontWeight="800"
+          fontFamily="Manrope, sans-serif"
+        >
+          {b.name}
+        </text>
+      </g>
+    );
+  }
+
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  const lines = b.full.split(/\s(?=Ground|VIT|·|Block)/).length > 1
+    ? [b.name.split(" ")[0], b.name.split(" ").slice(1).join(" ")]
+    : b.name.split(" ").length > 2
+    ? [b.name.split(" ").slice(0, 2).join(" "), b.name.split(" ").slice(2).join(" ")]
+    : [b.name];
+
+  return (
+    <g
+      onClick={onTap}
+      style={{ cursor: "pointer" }}
+      data-testid={`building-${b.id}`}
+    >
+      {/* Soft ground shadow */}
+      <rect
+        x={b.x + 3}
+        y={b.y + 5}
+        width={b.w}
+        height={b.h}
+        rx={b.rounded ?? 8}
+        fill="rgba(0,0,0,0.10)"
+        filter="url(#softShadow)"
+      />
+      <rect
+        x={b.x}
+        y={b.y}
+        width={b.w}
+        height={b.h}
+        rx={b.rounded ?? 8}
+        fill={cat.color}
+        stroke={strokeCol}
+        strokeWidth={strokeW}
+      />
+      {b.extras === "cricket" && (
+        <g>
+          {/* Cricket pitch strip */}
+          <rect
+            x={b.x + b.w * 0.62}
+            y={b.y + b.h * 0.30}
+            width={b.w * 0.18}
+            height={b.h * 0.42}
+            fill="#F1D9A6"
+            stroke="#B39160"
+            strokeWidth="1"
+            strokeDasharray="4 4"
+          />
+        </g>
+      )}
+      {/* Multi-line label */}
+      {lines.map((ln, i) => (
+        <text
+          key={i}
+          x={cx}
+          y={cy - (lines.length - 1) * (b.labelSize / 2) + i * (b.labelSize + 2)}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="#1F2A44"
+          fontSize={b.labelSize}
+          fontWeight="800"
+          fontFamily="Manrope, sans-serif"
+        >
+          {ln}
+        </text>
+      ))}
+    </g>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// Legend (top-left overlay, collapsible on small screens)
+// -----------------------------------------------------------------------------
+const MapLegend = () => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="absolute left-4 top-24 z-20">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        data-testid="legend-toggle"
+        className="bg-white rounded-2xl shadow-[0_10px_30px_rgba(31,42,68,0.15)] border border-black/5 h-10 px-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#1F2A44]"
+      >
+        <Compass size={14} /> Legend
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="mt-2 bg-white rounded-2xl shadow-[0_10px_30px_rgba(31,42,68,0.15)] border border-black/5 p-3 space-y-1.5 w-56"
+          >
+            {Object.entries(CATEGORIES).map(([k, v]) => (
+              <div key={k} className="flex items-center gap-2">
+                <span
+                  className="h-4 w-6 rounded border"
+                  style={{ background: v.color, borderColor: v.stroke + "88" }}
+                />
+                <span className="text-[12px] text-[#1F2A44] font-semibold">{v.label}</span>
+              </div>
+            ))}
+            <div className="flex items-center gap-2 pt-1">
+              <span className="h-1.5 w-6 rounded-full bg-[#BFBFBF] relative">
+                <span className="absolute inset-0 flex items-center">
+                  <span className="mx-auto h-[2px] w-4 bg-white" />
+                </span>
+              </span>
+              <span className="text-[12px] text-[#1F2A44] font-semibold">Roads</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// Zoom / reset button
+// -----------------------------------------------------------------------------
+const ControlBtn = ({ onClick, children, testid }) => (
+  <button
+    onClick={onClick}
+    data-testid={testid}
+    className="h-10 w-10 rounded-full bg-white shadow-[0_10px_30px_rgba(31,42,68,0.15)] border border-black/5 flex items-center justify-center text-[#1F2A44] hover:bg-[#F2EEE6]"
+  >
+    {children}
+  </button>
+);
+
+// -----------------------------------------------------------------------------
+// Bottom sheets
+// -----------------------------------------------------------------------------
+const sheetMotion = {
+  initial: { y: 200, opacity: 0 },
+  animate: { y: 0, opacity: 1 },
+  exit: { y: 200, opacity: 0 },
+  transition: { type: "spring", stiffness: 320, damping: 32 },
+};
+
+const BuildingSheet = ({ building, onClose, onDirections }) => {
+  const cat = CATEGORIES[building.category];
+  return (
+    <motion.div
+      {...sheetMotion}
+      data-testid="building-sheet"
+      className="fixed bottom-24 inset-x-4 z-40 max-w-md mx-auto bg-white rounded-3xl shadow-[0_20px_50px_rgba(31,42,68,0.25)] border border-black/5 overflow-hidden"
+    >
+      <div className="p-5">
+        <div className="flex items-start gap-3">
+          <div
+            className="h-11 w-11 rounded-xl flex items-center justify-center border"
+            style={{ background: cat.color, borderColor: cat.stroke + "55" }}
+          >
+            <Building2 size={18} className="text-[#1F2A44]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] uppercase tracking-widest font-bold text-[#1F2A44]/50">
+              {cat.label}
+            </div>
+            <h3 className="font-display text-lg font-black text-[#1F2A44] tracking-tight leading-tight">
+              {building.full}
+            </h3>
+            <div className="text-[12px] text-[#1F2A44]/60 mt-0.5">Short code · {building.name}</div>
+          </div>
+          <button
+            onClick={onClose}
+            data-testid="close-sheet"
+            className="h-8 w-8 rounded-full hover:bg-black/5 flex items-center justify-center"
+            aria-label="Close"
+          >
+            <X size={16} className="text-[#1F2A44]/60" />
+          </button>
+        </div>
+        <div className="flex items-center gap-2 mt-4">
+          <button
+            data-testid="get-directions-btn"
+            onClick={onDirections}
+            className="flex-1 h-11 rounded-full bg-[#1A73E8] text-white font-bold text-sm hover:bg-[#1667D0] active:scale-[0.98] transition-[background-color,transform] flex items-center justify-center gap-2"
+          >
+            <Navigation size={16} /> Directions from Main Entry
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const DirectionsSheet = ({ building, onClose }) => {
+  const cat = CATEGORIES[building.category];
+  const legs = building.route.length - 1;
+  return (
+    <motion.div
+      {...sheetMotion}
+      data-testid="directions-sheet"
+      className="fixed bottom-24 inset-x-4 z-40 max-w-md mx-auto bg-white rounded-3xl shadow-[0_20px_50px_rgba(31,42,68,0.25)] border border-black/5 overflow-hidden"
+    >
+      <div className="p-5">
+        <div className="flex items-start gap-3">
+          <div className="h-11 w-11 rounded-xl bg-[#1A73E8]/10 border border-[#1A73E8]/30 flex items-center justify-center">
+            <Navigation size={18} className="text-[#1A73E8]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] uppercase tracking-widest font-bold text-[#1F2A44]/50">
+              Route
+            </div>
+            <h3 className="font-display text-lg font-black text-[#1F2A44] tracking-tight leading-tight">
+              To {building.full}
+            </h3>
+            <div className="text-[12px] text-[#1F2A44]/60 mt-0.5">
+              {legs} leg{legs > 1 ? "s" : ""} along campus roads
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            data-testid="close-directions"
+            className="h-8 w-8 rounded-full hover:bg-black/5 flex items-center justify-center"
+            aria-label="Close"
+          >
+            <X size={16} className="text-[#1F2A44]/60" />
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          <RouteStep
+            iconBg="#1F2A44"
+            title="Start · Main Entry"
+            subtitle="You are here"
+            dot="start"
+          />
+          <RouteStep
+            iconBg={cat.stroke}
+            title={`End · ${building.full}`}
+            subtitle={cat.label}
+            dot="end"
+          />
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const RouteStep = ({ title, subtitle, iconBg, dot }) => (
+  <div className="flex items-center gap-3">
+    <div className="relative flex flex-col items-center">
+      <span
+        className="h-3 w-3 rounded-full border-2 border-white"
+        style={{ background: iconBg, boxShadow: `0 0 0 2px ${iconBg}` }}
+      />
+      {dot === "start" && (
+        <span className="h-6 border-l-2 border-dashed border-[#1F2A44]/25 mt-1" />
+      )}
+    </div>
+    <div className="flex-1 min-w-0">
+      <div className="text-[13px] font-bold text-[#1F2A44] truncate">{title}</div>
+      <div className="text-[11px] text-[#1F2A44]/55 truncate">{subtitle}</div>
+    </div>
+    <MapPin size={14} className="text-[#1F2A44]/40" />
   </div>
 );
