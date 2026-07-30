@@ -1,0 +1,33 @@
+{
+  "summary": "Static verification of Flutter super-app files + React web-app regression check. All 5 Flutter static verification items PASS. React app (unaffected by Flutter changes) still renders the 4-tab BottomNav (Home/Map/Leaderboard/Profile) and Map page loads correctly with campus map tiles.",
+  "flutter_static_verification": {
+    "main_dart_points_to_VITSuperApp": "PASS — /app/flutter/lib/main.dart imports 'app/vit_super_app.dart' and MaterialApp.home = const VITSuperApp(orsApiKey: '...', mapTilerApiKey: '0BNwrOGmOw4HXYKTGrot'). No reference to VITNavigationScreen.",
+    "vit_super_app_structure": "PASS — Scaffold with (a) AppBar containing _LanguageMenuButton + warning IconButton (Icons.warning_amber_rounded) that opens ReportDisruptionSheet, (b) IndexedStack with EXACTLY 5 children in order [NavigateTab, SquadTab, CampusHubTab, OpportunitiesTab, ProfileTab], (c) BottomNavigationBar with type=BottomNavigationBarType.fixed and 5 BottomNavigationBarItem entries (map/groups/event_note/rocket_launch/emoji_events).",
+    "all_5_tab_files_exist": "PASS — /app/flutter/lib/tabs/{navigate_tab,squad_tab,campus_hub_tab,opportunities_tab,profile_tab}.dart all present. Classes NavigateTab (StatefulWidget — required so parent can call reportDisruptionAtCurrentLocation via GlobalKey<NavigateTabState>), SquadTab, CampusHubTab, OpportunitiesTab, ProfileTab (all StatelessWidget) exported.",
+    "navigate_tab_preserves_map_ORS_logic": "PASS — grep confirms /app/flutter/lib/tabs/navigate_tab.dart still contains flutter_map + openrouteservice + geolocator references (13.9 KB file, existing routing logic retained).",
+    "supporting_files_exist": "PASS — /app/flutter/lib/i18n/app_translations.dart, /app/flutter/lib/widgets/report_disruption_sheet.dart, /app/flutter/lib/widgets/placeholder_tab.dart all present."
+  },
+  "flutter_runtime_verification": "NOT POSSIBLE IN THIS CONTAINER — There is no Flutter SDK, no Android emulator and no Flutter Web build being served in this pod. The Emergent preview URL points to the separate React web app at /app/frontend/. Rendering / clicking the Flutter BottomNavigationBar and 5 tabs (Navigate/Squad/Hub/Opportunities/Profile) CANNOT be verified here. To visually verify the BottomNav in the preview, a Flutter Web build must be produced (`flutter build web`) and served — please bubble this up to the user. The user's report that 'BottomNavigationBar and 5 tabs are not showing in the preview' is expected: the preview URL is the React app, not the Flutter app.",
+  "react_regression_check": {
+    "login": "PASS — player@vitquest.com / player123 logs in via [data-testid=login-submit], redirected to /",
+    "bottom_nav": "PASS — 4 labels rendered: Home, Map, Leaderboard, Profile",
+    "map_page": "PASS — /map route loads, shows VIT Bhopal campus map with buildings (A.B.1, Cricket Ground, Parcel Area, Open Auditorium, etc.), Legend button, zoom controls, locate button, search bar. Note: uses a custom campus SVG/canvas overlay rather than a Leaflet tile layer (0 .leaflet-container elements), which appears intentional."
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [],
+  "action_items": [
+    "Communicate to user: the shared preview URL (quest-design-kit.preview.emergentagent.com) is the REACT app, not the Flutter super-app. The new Flutter BottomNav + 5 tabs are correctly wired in /app/flutter/lib/main.dart -> VITSuperApp, but this pod has no Flutter SDK/Web build, so the Flutter UI cannot be rendered here. To see the 5-tab shell, build the Flutter app locally (flutter run) or produce a Flutter Web build and host it."
+  ],
+  "critical_code_review_comments": [
+    "main.dart hardcodes the ORS API key and MapTiler API key as Dart string literals — for a production app these should be loaded via --dart-define or a secrets file, not committed to source.",
+    "VITSuperApp uses .withOpacity() (deprecated in Flutter 3.27+ in favour of .withValues(alpha:)) at lines 136, 139, 254, 257 — non-blocking but will emit deprecation warnings on newer SDKs."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (backend testing not requested)", "frontend": "100% (React regression), Flutter static 100% / runtime N/A"},
+  "test_credentials": "player@vitquest.com / player123 (worked)",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Flutter code lives at /app/flutter/ and cannot be rendered in this container. Static verification of main.dart -> VITSuperApp -> 5-tab IndexedStack + BottomNavigationBar is complete and passing. React app at /app/frontend/ is a separate unrelated app and remains healthy."
+}
