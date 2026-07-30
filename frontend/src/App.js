@@ -6,10 +6,6 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
-import Dashboard from "@/pages/Dashboard";
-import MapPage from "@/pages/MapPage";
-import Leaderboard from "@/pages/Leaderboard";
-import Profile from "@/pages/Profile";
 
 const Loading = () => (
   <div className="min-h-screen bg-[#050505] flex items-center justify-center">
@@ -51,18 +47,13 @@ function AppRoutes() {
         }
       />
       <Route
+        path="*"
         element={
           <RequireAuth>
             <AppLayout />
           </RequireAuth>
         }
-      >
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/map" element={<MapPage />} />
-        <Route path="/leaderboard" element={<Leaderboard />} />
-        <Route path="/profile" element={<Profile />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      />
     </Routes>
   );
 }
