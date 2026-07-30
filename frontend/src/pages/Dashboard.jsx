@@ -25,7 +25,7 @@ export default function Dashboard() {
 
   if (!user) return null;
 
-  const firstName = user.name.split(" ")[0];
+  const firstName = (user?.name || "Student").split(" ")[0];
 
   return (
     <div className="px-6 pt-8">
