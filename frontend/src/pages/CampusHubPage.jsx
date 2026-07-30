@@ -15,7 +15,10 @@ export default function CampusHubPage() {
     const timer = setInterval(() => {
       if (alertFiredRef.current) return;
       const minsUntil = (classStartRef.current.getTime() - Date.now()) / 60000;
-      if (minsUntil <= 15 && minsUntil > 14.5) {
+      // Fire once the class is within 15 min but hasn't started yet.
+      // (Wider window than the exact 30-s slice so a backgrounded/throttled
+      // tab doesn't miss the alert.)
+      if (minsUntil <= 15 && minsUntil > 0) {
         alertFiredRef.current = true;
         setAlertOpen(true);
       }
