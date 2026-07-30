@@ -6,17 +6,14 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
-/// Turn-by-turn walking navigation screen for VIT Bhopal (Kotri Kalan).
-///
-/// * Uses MapTiler `streets-v2` raster tiles for the base map
-/// * Calls OpenRouteService `v2/directions/foot-walking` and parses both the
-///   full geometry (for the route polyline) and `segments[0].steps` (for
-///   turn-by-turn maneuvers)
-/// * Floating Google-Maps-style instruction banner at the top
-/// * Listens to `Geolocator.getPositionStream`, uses `latlong2` `Distance()`
-///   to advance to the next step when < 10 m from the current maneuver
-/// * Auto-centres + rotates the map to match the user's heading via
-///   `MapController.moveAndRotate()`
+/// Turn-by-turn walking navigation screen for VIT Bhopal (Kotri Kalan) with:
+///   • MapTiler `streets-v2` tiles + camera lock to the campus bounds
+///   • OpenRouteService `foot-walking` / `wheelchair` GeoJSON routing
+///   • Multilingual instructions (EN / HI / TE)
+///   • Live user-reported disruptions (Waze-style, avoided via ORS
+///     `avoid_polygons`)
+///   • Smart shortcuts: Squad Meetup (midpoint routing) and Next Class
+///   • Auto-centre + rotate map to the user's heading
 class VITNavigationScreen extends StatefulWidget {
   const VITNavigationScreen({
     super.key,
@@ -27,15 +24,9 @@ class VITNavigationScreen extends StatefulWidget {
     this.mapTilerApiKey = '0BNwrOGmOw4HXYKTGrot',
   });
 
-  /// End point of the walking route.
   final LatLng destination;
-
-  /// Human-readable label shown in the banner subtitle.
   final String destinationName;
-
-  /// Optional starting point.  When null, the user's current location is used.
   final LatLng? origin;
-
   final String orsApiKey;
   final String mapTilerApiKey;
 
@@ -52,21 +43,83 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
   );
   static const double minZoom = 16.0;
   static const double followZoom = 18.0;
-
-  // --- Step progression threshold ---
   static const double stepReachedMeters = 10.0;
 
+  // Mock "friend" for squad meetup + fixed "Next Class" venue.
+  static const LatLng _friendLocation = LatLng(23.080, 76.852);
+  static const LatLng _academicBlock1 = LatLng(23.075, 76.852);
+  static const String _academicBlock1Name = 'Academic Block 1';
+
+  // --- Localisation config ---
+  static const Map<String, _LangSpec> _languages = {
+    'en': _LangSpec(label: 'English', flag: '🇬🇧'),
+    'hi': _LangSpec(label: 'हिन्दी', flag: '🇮🇳'),
+    'te': _LangSpec(label: 'తెలుగు', flag: '🇮🇳'),
+  };
+  static const Map<String, Map<String, String>> _i18n = {
+    'en': {
+      'building_route': 'Building your route…',
+      'exit': 'Exit',
+      'step': 'Step',
+      'route_type_foot': 'Walking',
+      'route_type_wheel': 'Wheelchair',
+      'route_updated': 'Route updated',
+      'report_success': '+50 Quest Points: Path Blocked Reported',
+      'waiting_location': 'Waiting for your GPS…',
+      'squad_dest': 'Squad Meetup Point',
+      'next_class_snack': 'Next class in 8 min · Routing to Academic Block 1',
+    },
+    'hi': {
+      'building_route': 'रास्ता तैयार हो रहा है…',
+      'exit': 'बाहर',
+      'step': 'चरण',
+      'route_type_foot': 'पैदल',
+      'route_type_wheel': 'व्हीलचेयर',
+      'route_updated': 'रास्ता अपडेट हुआ',
+      'report_success': '+50 अंक: रास्ता अवरुद्ध रिपोर्ट किया गया',
+      'waiting_location': 'GPS की प्रतीक्षा है…',
+      'squad_dest': 'स्क्वाड मिलन बिंदु',
+      'next_class_snack': '8 मिनट में अगली क्लास · अकादमिक ब्लॉक 1 की ओर',
+    },
+    'te': {
+      'building_route': 'మార్గం సిద్ధమవుతోంది…',
+      'exit': 'నిష్క్రమించు',
+      'step': 'దశ',
+      'route_type_foot': 'నడక',
+      'route_type_wheel': 'వీల్‌చైర్',
+      'route_updated': 'మార్గం నవీకరించబడింది',
+      'report_success': '+50 పాయింట్లు: మార్గం మూసివేయబడింది నివేదించబడింది',
+      'waiting_location': 'GPS కోసం వేచి ఉంది…',
+      'squad_dest': 'స్క్వాడ్ మీట్‌అప్ పాయింట్',
+      'next_class_snack': '8 నిమిషాల్లో తదుపరి తరగతి · అకడమిక్ బ్లాక్ 1 కి',
+    },
+  };
+
+  String _t(String key) => _i18n[_language]?[key] ?? _i18n['en']![key]!;
+
+  // --- Core map controllers ---
   final MapController _mapController = MapController();
   final Distance _distance = const Distance();
-
   StreamSubscription<Position>? _positionSub;
+
+  // --- Live state ---
   LatLng? _userLocation;
   double _userHeading = 0;
 
+  // --- Route state ---
   List<LatLng> _routeLine = [];
   List<_NavStep> _steps = [];
   int _currentStep = 0;
   double? _distanceToManeuver;
+
+  // --- Destination (mutable — can change for Squad / Next Class) ---
+  late LatLng _destination;
+  late String _destinationName;
+
+  // --- Hackathon features state ---
+  String _routingProfile = 'foot-walking'; // toggles with 'wheelchair'
+  String _language = 'en'; // 'en' | 'hi' | 'te'
+  final List<LatLng> _reportedDisruptions = [];
 
   bool _loading = true;
   String? _error;
@@ -74,6 +127,8 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
   @override
   void initState() {
     super.initState();
+    _destination = widget.destination;
+    _destinationName = widget.destinationName;
     _bootstrap();
   }
 
@@ -88,12 +143,18 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
   // Bootstrap: permission → location → route → tracking
   // ---------------------------------------------------------------------------
   Future<void> _bootstrap() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final start = widget.origin ?? await _resolveCurrentLocation();
+      final start = _userLocation ??
+          widget.origin ??
+          await _resolveCurrentLocation();
       if (!mounted) return;
       setState(() => _userLocation = start);
-      await _fetchRoute(start, widget.destination);
-      _startTracking();
+      await _fetchRoute(start, _destination);
+      if (_positionSub == null) _startTracking();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -123,13 +184,27 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
   }
 
   // ---------------------------------------------------------------------------
-  // OpenRouteService — foot-walking directions
+  // OpenRouteService — dynamic profile + language + avoid_polygons
   // ---------------------------------------------------------------------------
   Future<void> _fetchRoute(LatLng start, LatLng end) async {
     setState(() => _loading = true);
     final uri = Uri.parse(
-      'https://api.openrouteservice.org/v2/directions/foot-walking/geojson',
+      'https://api.openrouteservice.org/v2/directions/$_routingProfile/geojson',
     );
+
+    final body = <String, dynamic>{
+      'coordinates': [
+        [start.longitude, start.latitude],
+        [end.longitude, end.latitude],
+      ],
+      'instructions': true,
+      'language': _language,
+    };
+
+    if (_reportedDisruptions.isNotEmpty) {
+      body['options'] = {'avoid_polygons': _buildAvoidPolygonsGeoJson()};
+    }
+
     final resp = await http.post(
       uri,
       headers: {
@@ -138,14 +213,7 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
         'Accept':
             'application/json, application/geo+json, application/gpx+xml;charset=UTF-8',
       },
-      body: jsonEncode({
-        'coordinates': [
-          [start.longitude, start.latitude],
-          [end.longitude, end.latitude],
-        ],
-        'instructions': true,
-        'language': 'en',
-      }),
+      body: jsonEncode(body),
     );
 
     if (resp.statusCode != 200) {
@@ -155,18 +223,16 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
     final json = jsonDecode(resp.body) as Map<String, dynamic>;
     final feature = (json['features'] as List).first as Map<String, dynamic>;
 
-    // Geometry — LineString of [lon, lat]
     final coords = (feature['geometry']['coordinates'] as List)
-        .map<LatLng>((c) => LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
+        .map<LatLng>((c) =>
+            LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
         .toList();
 
-    // Steps — segments[0].steps
     final segments = feature['properties']['segments'] as List;
     final rawSteps = (segments.first as Map<String, dynamic>)['steps'] as List;
     final steps = rawSteps.map<_NavStep>((raw) {
       final s = raw as Map<String, dynamic>;
       final wp = (s['way_points'] as List).cast<num>();
-      // The maneuver happens at the END of the current step (== start of the next).
       final maneuverIdx = wp.last.toInt().clamp(0, coords.length - 1);
       return _NavStep(
         instruction: s['instruction'] as String,
@@ -183,13 +249,52 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
       _routeLine = coords;
       _steps = steps;
       _currentStep = 0;
-      _distanceToManeuver =
-          steps.isNotEmpty ? _distance.as(LengthUnit.Meter, start, steps.first.maneuverPoint) : null;
+      _distanceToManeuver = steps.isNotEmpty
+          ? _distance.as(LengthUnit.Meter, start, steps.first.maneuverPoint)
+          : null;
       _loading = false;
     });
 
-    // Fit the entire route on the map on first load
     Future.delayed(const Duration(milliseconds: 200), _fitRoute);
+  }
+
+  /// Convert every reported disruption LatLng into a small GeoJSON polygon
+  /// (bounding box ~15 m per side).  ORS `avoid_polygons` expects a
+  /// MultiPolygon geometry.
+  Map<String, dynamic> _buildAvoidPolygonsGeoJson() {
+    const double d = 0.00015; // ~16 m in decimal degrees near the equator
+    final polygons = _reportedDisruptions.map<List<List<List<double>>>>((p) {
+      final lon = p.longitude;
+      final lat = p.latitude;
+      // GeoJSON polygon = list of linear rings; first is exterior, closed ring.
+      return [
+        [
+          [lon - d, lat - d],
+          [lon + d, lat - d],
+          [lon + d, lat + d],
+          [lon - d, lat + d],
+          [lon - d, lat - d],
+        ],
+      ];
+    }).toList();
+    return {'type': 'MultiPolygon', 'coordinates': polygons};
+  }
+
+  Future<void> _recomputeRoute() async {
+    if (_userLocation == null) {
+      _showSnack(_t('waiting_location'));
+      return;
+    }
+    try {
+      await _fetchRoute(_userLocation!, _destination);
+      _showSnack(_t('route_updated'));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
   }
 
   void _fitRoute() {
@@ -198,13 +303,13 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
     _mapController.fitCamera(
       CameraFit.bounds(
         bounds: bounds,
-        padding: const EdgeInsets.fromLTRB(40, 140, 40, 220),
+        padding: const EdgeInsets.fromLTRB(40, 200, 40, 240),
       ),
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Live GPS tracking + step progression + map rotate/centre
+  // Live GPS tracking + step progression + rotation
   // ---------------------------------------------------------------------------
   void _startTracking() {
     _positionSub = Geolocator.getPositionStream(
@@ -217,8 +322,6 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
 
   void _onPositionUpdate(Position pos) {
     final user = LatLng(pos.latitude, pos.longitude);
-    // `heading` is degrees clockwise from north.  flutter_map wants clockwise
-    // rotation to align the map with that heading, so we pass -heading.
     final heading = pos.heading.isNaN ? _userHeading : pos.heading;
 
     if (!mounted) return;
@@ -231,8 +334,6 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
           user,
           _steps[_currentStep].maneuverPoint,
         );
-        // Auto-advance when the user is within `stepReachedMeters` of the
-        // current maneuver point.
         while (_currentStep < _steps.length - 1 &&
             (_distanceToManeuver ?? double.infinity) < stepReachedMeters) {
           _currentStep += 1;
@@ -245,8 +346,75 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
       }
     });
 
-    // Keep the map locked to the user, oriented in their walking direction.
     _mapController.moveAndRotate(user, followZoom, -heading);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hackathon actions
+  // ---------------------------------------------------------------------------
+  void _toggleAccessibility() {
+    setState(() {
+      _routingProfile =
+          _routingProfile == 'foot-walking' ? 'wheelchair' : 'foot-walking';
+    });
+    _showSnack(_routingProfile == 'wheelchair'
+        ? _t('route_type_wheel')
+        : _t('route_type_foot'));
+    _recomputeRoute();
+  }
+
+  void _reportDisruption() {
+    if (_userLocation == null) {
+      _showSnack(_t('waiting_location'));
+      return;
+    }
+    setState(() => _reportedDisruptions.add(_userLocation!));
+    _showSnack(_t('report_success'));
+    _recomputeRoute();
+  }
+
+  void _squadMeetup() {
+    if (_userLocation == null) {
+      _showSnack(_t('waiting_location'));
+      return;
+    }
+    final mid = LatLng(
+      (_userLocation!.latitude + _friendLocation.latitude) / 2,
+      (_userLocation!.longitude + _friendLocation.longitude) / 2,
+    );
+    setState(() {
+      _destination = mid;
+      _destinationName = _t('squad_dest');
+    });
+    _recomputeRoute();
+  }
+
+  void _nextClass() {
+    setState(() {
+      _destination = _academicBlock1;
+      _destinationName = _academicBlock1Name;
+    });
+    _showSnack(_t('next_class_snack'));
+    _recomputeRoute();
+  }
+
+  void _onLanguageChanged(String? lang) {
+    if (lang == null || lang == _language) return;
+    setState(() => _language = lang);
+    _bootstrap();
+  }
+
+  void _showSnack(String msg) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w700)),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        backgroundColor: const Color(0xFF1F2A44),
+        duration: const Duration(seconds: 2),
+      ));
   }
 
   // ---------------------------------------------------------------------------
@@ -264,7 +432,7 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: widget.destination,
+              initialCenter: _destination,
               initialZoom: 17.0,
               minZoom: minZoom,
               maxZoom: 19,
@@ -294,53 +462,231 @@ class _VITNavigationScreenState extends State<VITNavigationScreen>
                 ),
               MarkerLayer(
                 markers: [
+                  // Reported disruption pins
+                  ..._reportedDisruptions.map(
+                    (p) => Marker(
+                      point: p,
+                      width: 32,
+                      height: 32,
+                      child: const _DisruptionPin(),
+                    ),
+                  ),
+                  // Destination
                   Marker(
-                    point: widget.destination,
+                    point: _destination,
                     width: 40,
                     height: 40,
-                    child: _DestinationPin(),
+                    child: const _DestinationPin(),
                   ),
+                  // Live user puck
                   if (_userLocation != null)
                     Marker(
                       point: _userLocation!,
                       width: 60,
                       height: 60,
-                      child: _UserPuck(headingDeg: _userHeading),
+                      child: const _UserPuck(),
                     ),
                 ],
               ),
             ],
           ),
 
+          // Top language pill (top-right, above the banner)
+          _TopLanguageBar(
+            language: _language,
+            languages: _languages,
+            onChanged: _onLanguageChanged,
+            profile: _routingProfile,
+            profileFootLabel: _t('route_type_foot'),
+            profileWheelLabel: _t('route_type_wheel'),
+          ),
+
           if (_loading) const _CenteredLoader(),
           if (_error != null) _ErrorBanner(message: _error!, onRetry: _bootstrap),
 
           if (!_loading && _error == null && _steps.isNotEmpty)
-            _InstructionBanner(
-              step: _steps[_currentStep],
-              distanceToManeuver: _distanceToManeuver,
-              stepIndex: _currentStep,
-              totalSteps: _steps.length,
-              destinationName: widget.destinationName,
+            Padding(
+              padding: const EdgeInsets.only(top: 52), // room for lang pill
+              child: _InstructionBanner(
+                step: _steps[_currentStep],
+                distanceToManeuver: _distanceToManeuver,
+                stepIndex: _currentStep,
+                totalSteps: _steps.length,
+                destinationName: _destinationName,
+                stepLabel: _t('step'),
+              ),
             ),
+
+          // Right-side FAB column (accessibility, disruption, squad, next class)
+          _ActionColumn(
+            profile: _routingProfile,
+            onToggleAccessibility: _toggleAccessibility,
+            onReportDisruption: _reportDisruption,
+            onSquadMeetup: _squadMeetup,
+            onNextClass: _nextClass,
+          ),
 
           if (!_loading && _steps.isNotEmpty)
             _BottomProgress(
               steps: _steps,
               currentStep: _currentStep,
+              exitLabel: _t('exit'),
               onExit: () => Navigator.of(context).maybePop(),
             ),
         ],
       ),
       floatingActionButton: (_userLocation != null && !_loading)
-          ? FloatingActionButton.small(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF1A73E8),
-              onPressed: () =>
-                  _mapController.moveAndRotate(_userLocation!, followZoom, -_userHeading),
-              child: const Icon(Icons.navigation_rounded),
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 92),
+              child: FloatingActionButton.small(
+                heroTag: 'recenter',
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF1A73E8),
+                onPressed: () => _mapController.moveAndRotate(
+                    _userLocation!, followZoom, -_userHeading),
+                child: const Icon(Icons.navigation_rounded),
+              ),
             )
           : null,
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Language spec
+// -----------------------------------------------------------------------------
+class _LangSpec {
+  const _LangSpec({required this.label, required this.flag});
+  final String label;
+  final String flag;
+}
+
+// -----------------------------------------------------------------------------
+// Top language + profile pill
+// -----------------------------------------------------------------------------
+class _TopLanguageBar extends StatelessWidget {
+  const _TopLanguageBar({
+    required this.language,
+    required this.languages,
+    required this.onChanged,
+    required this.profile,
+    required this.profileFootLabel,
+    required this.profileWheelLabel,
+  });
+
+  final String language;
+  final Map<String, _LangSpec> languages;
+  final ValueChanged<String?> onChanged;
+  final String profile;
+  final String profileFootLabel;
+  final String profileWheelLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final isWheel = profile == 'wheelchair';
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Row(
+          children: [
+            // Route profile pill
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x22000000),
+                      blurRadius: 10,
+                      offset: Offset(0, 3)),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isWheel
+                        ? Icons.accessible_forward_rounded
+                        : Icons.directions_walk_rounded,
+                    size: 16,
+                    color: const Color(0xFF1A73E8),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    isWheel ? profileWheelLabel : profileFootLabel,
+                    style: const TextStyle(
+                      color: Color(0xFF1F2A44),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            // Language dropdown pill
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x22000000),
+                      blurRadius: 10,
+                      offset: Offset(0, 3)),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.language_rounded,
+                      size: 16, color: Color(0xFF1F2A44)),
+                  const SizedBox(width: 6),
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: language,
+                      onChanged: onChanged,
+                      icon: const Icon(Icons.expand_more_rounded,
+                          size: 18, color: Color(0xFF1F2A44)),
+                      isDense: true,
+                      style: const TextStyle(
+                        color: Color(0xFF1F2A44),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      items: languages.entries
+                          .map((e) => DropdownMenuItem(
+                                value: e.key,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(e.value.flag,
+                                        style: const TextStyle(fontSize: 14)),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      e.value.label,
+                                      style: const TextStyle(
+                                        color: Color(0xFF1F2A44),
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -365,7 +711,6 @@ class _NavStep {
   final String name;
   final LatLng maneuverPoint;
 
-  /// Map ORS step `type` (0..13) to a Material icon.
   IconData get icon {
     switch (type) {
       case 0:
@@ -411,6 +756,7 @@ class _InstructionBanner extends StatelessWidget {
     required this.stepIndex,
     required this.totalSteps,
     required this.destinationName,
+    required this.stepLabel,
   });
 
   final _NavStep step;
@@ -418,13 +764,14 @@ class _InstructionBanner extends StatelessWidget {
   final int stepIndex;
   final int totalSteps;
   final String destinationName;
+  final String stepLabel;
 
   @override
   Widget build(BuildContext context) {
     final remaining = distanceToManeuver ?? step.distanceMeters;
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
         child: Material(
           color: Colors.transparent,
           child: Container(
@@ -433,10 +780,9 @@ class _InstructionBanner extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x33000000),
-                  blurRadius: 20,
-                  offset: Offset(0, 8),
-                ),
+                    color: Color(0x33000000),
+                    blurRadius: 20,
+                    offset: Offset(0, 8)),
               ],
             ),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -482,7 +828,7 @@ class _InstructionBanner extends StatelessWidget {
                       Row(
                         children: [
                           Text(
-                            'Step ${stepIndex + 1} / $totalSteps',
+                            '$stepLabel ${stepIndex + 1} / $totalSteps',
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.75),
                               fontSize: 11,
@@ -526,17 +872,112 @@ class _InstructionBanner extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------------
+// Action column (right side)
+// -----------------------------------------------------------------------------
+class _ActionColumn extends StatelessWidget {
+  const _ActionColumn({
+    required this.profile,
+    required this.onToggleAccessibility,
+    required this.onReportDisruption,
+    required this.onSquadMeetup,
+    required this.onNextClass,
+  });
+
+  final String profile;
+  final VoidCallback onToggleAccessibility;
+  final VoidCallback onReportDisruption;
+  final VoidCallback onSquadMeetup;
+  final VoidCallback onNextClass;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      right: 12,
+      top: MediaQuery.of(context).size.height * 0.35,
+      child: Column(
+        children: [
+          _ActionFab(
+            heroTag: 'access',
+            icon: profile == 'wheelchair'
+                ? Icons.accessible_forward_rounded
+                : Icons.directions_walk_rounded,
+            color: const Color(0xFF7C3AED),
+            tooltip: 'Toggle Accessibility',
+            onPressed: onToggleAccessibility,
+          ),
+          const SizedBox(height: 10),
+          _ActionFab(
+            heroTag: 'disrupt',
+            icon: Icons.report_gmailerrorred_rounded,
+            color: const Color(0xFFDC2626),
+            tooltip: 'Report Disruption',
+            onPressed: onReportDisruption,
+          ),
+          const SizedBox(height: 10),
+          _ActionFab(
+            heroTag: 'squad',
+            icon: Icons.groups_2_rounded,
+            color: const Color(0xFF16A34A),
+            tooltip: 'Squad Meetup',
+            onPressed: onSquadMeetup,
+          ),
+          const SizedBox(height: 10),
+          _ActionFab(
+            heroTag: 'nextclass',
+            icon: Icons.schedule_rounded,
+            color: const Color(0xFF0EA5E9),
+            tooltip: 'Next Class',
+            onPressed: onNextClass,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionFab extends StatelessWidget {
+  const _ActionFab({
+    required this.heroTag,
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final String heroTag;
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton.small(
+      heroTag: heroTag,
+      backgroundColor: Colors.white,
+      foregroundColor: color,
+      elevation: 3,
+      tooltip: tooltip,
+      onPressed: onPressed,
+      child: Icon(icon),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Bottom progress / exit bar
 // -----------------------------------------------------------------------------
 class _BottomProgress extends StatelessWidget {
   const _BottomProgress({
     required this.steps,
     required this.currentStep,
+    required this.exitLabel,
     required this.onExit,
   });
 
   final List<_NavStep> steps;
   final int currentStep;
+  final String exitLabel;
   final VoidCallback onExit;
 
   @override
@@ -560,7 +1001,9 @@ class _BottomProgress extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             boxShadow: const [
               BoxShadow(
-                  color: Color(0x22000000), blurRadius: 18, offset: Offset(0, 8)),
+                  color: Color(0x22000000),
+                  blurRadius: 18,
+                  offset: Offset(0, 8)),
             ],
           ),
           child: Row(
@@ -620,8 +1063,8 @@ class _BottomProgress extends StatelessWidget {
                       horizontal: 16, vertical: 12),
                   elevation: 0,
                 ),
-                child: const Text('Exit',
-                    style: TextStyle(fontWeight: FontWeight.w800)),
+                child: Text(exitLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
               ),
             ],
           ),
@@ -637,17 +1080,13 @@ class _BottomProgress extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------------
-// User "puck" marker with heading indicator
+// Markers
 // -----------------------------------------------------------------------------
 class _UserPuck extends StatelessWidget {
-  const _UserPuck({required this.headingDeg});
-
-  final double headingDeg;
+  const _UserPuck();
 
   @override
   Widget build(BuildContext context) {
-    // The map is rotated by -heading so that the user faces "up" on screen;
-    // the puck itself therefore does NOT need extra rotation.
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -671,43 +1110,14 @@ class _UserPuck extends StatelessWidget {
             ],
           ),
         ),
-        Positioned(
-          top: 6,
-          child: Container(
-            width: 0,
-            height: 0,
-            decoration: const BoxDecoration(),
-            child: CustomPaint(
-              size: const Size(14, 10),
-              painter: _ArrowPainter(),
-            ),
-          ),
-        ),
       ],
     );
   }
 }
 
-class _ArrowPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white;
-    final path = Path()
-      ..moveTo(size.width / 2, 0)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-// -----------------------------------------------------------------------------
-// Destination pin
-// -----------------------------------------------------------------------------
 class _DestinationPin extends StatelessWidget {
+  const _DestinationPin();
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -732,6 +1142,26 @@ class _DestinationPin extends StatelessWidget {
   }
 }
 
+class _DisruptionPin extends StatelessWidget {
+  const _DisruptionPin();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF59E0B),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2.5),
+        boxShadow: const [
+          BoxShadow(color: Color(0x55000000), blurRadius: 6, offset: Offset(0, 2)),
+        ],
+      ),
+      child: const Icon(Icons.warning_amber_rounded,
+          color: Colors.white, size: 18),
+    );
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Loader + error
 // -----------------------------------------------------------------------------
@@ -747,7 +1177,8 @@ class _CenteredLoader extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: const [
-            BoxShadow(color: Color(0x22000000), blurRadius: 20, offset: Offset(0, 6)),
+            BoxShadow(
+                color: Color(0x22000000), blurRadius: 20, offset: Offset(0, 6)),
           ],
         ),
         child: Column(
@@ -756,7 +1187,8 @@ class _CenteredLoader extends StatelessWidget {
             SizedBox(
               width: 26,
               height: 26,
-              child: CircularProgressIndicator(strokeWidth: 3, color: Color(0xFF1A73E8)),
+              child: CircularProgressIndicator(
+                  strokeWidth: 3, color: Color(0xFF1A73E8)),
             ),
             SizedBox(height: 12),
             Text('Building your route…',
@@ -791,7 +1223,10 @@ class _ErrorBanner extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFDC2626).withOpacity(0.35)),
               boxShadow: const [
-                BoxShadow(color: Color(0x22000000), blurRadius: 20, offset: Offset(0, 6)),
+                BoxShadow(
+                    color: Color(0x22000000),
+                    blurRadius: 20,
+                    offset: Offset(0, 6)),
               ],
             ),
             child: Row(
@@ -809,7 +1244,8 @@ class _ErrorBanner extends StatelessWidget {
                   onPressed: onRetry,
                   child: const Text('Retry',
                       style: TextStyle(
-                          color: Color(0xFF1A73E8), fontWeight: FontWeight.w800)),
+                          color: Color(0xFF1A73E8),
+                          fontWeight: FontWeight.w800)),
                 ),
               ],
             ),

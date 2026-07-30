@@ -1,28 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:latlong2/latlong.dart';
-import 'screens/vit_navigation_screen.dart';
+import 'app/vit_super_app.dart';
 
 void main() {
-  runApp(const VITQuestNavApp());
+  runApp(const VITQuestApp());
 }
 
-class VITQuestNavApp extends StatelessWidget {
-  const VITQuestNavApp({super.key});
+class VITQuestApp extends StatelessWidget {
+  const VITQuestApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'VIT Bhopal Navigation',
+      title: 'VIT Quest',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1A73E8)),
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF6F7FB),
       ),
-      home: const VITNavigationScreen(
-        destination: LatLng(23.075, 76.852),
-        destinationName: 'Academic Block 1',
+      home: const VITSuperApp(
         orsApiKey:
             'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjE5Mzk0MmE2ZDVhMTRjMTY4YzVlNjMyYjVmMjFhMWY3IiwiaCI6Im11cm11cjY0In0=',
+        mapTilerApiKey: '0BNwrOGmOw4HXYKTGrot',
       ),
     );
   }
