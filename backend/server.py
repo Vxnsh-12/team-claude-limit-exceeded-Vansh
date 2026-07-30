@@ -302,33 +302,48 @@ async def root():
 
 # ----- Seed data -----
 SEED_LOCATIONS = [
-    {"id": "loc-main-gate",    "name": "Main Gate",             "x": 50,  "y": 380, "type": "entry"},
-    {"id": "loc-tt",           "name": "Technology Tower",      "x": 180, "y": 300, "type": "academic"},
-    {"id": "loc-library",      "name": "Central Library",       "x": 300, "y": 220, "type": "academic"},
-    {"id": "loc-gd-naidu",     "name": "G.D. Naidu Block",      "x": 430, "y": 160, "type": "academic"},
-    {"id": "loc-smv",          "name": "SMV Block",             "x": 520, "y": 260, "type": "academic"},
-    {"id": "loc-sjt",          "name": "Silver Jubilee Tower",  "x": 640, "y": 200, "type": "academic"},
-    {"id": "loc-food-court",   "name": "Food Court",            "x": 380, "y": 380, "type": "food"},
-    {"id": "loc-anna-audi",    "name": "Anna Auditorium",       "x": 220, "y": 460, "type": "event"},
-    {"id": "loc-gym",          "name": "VIT Gym",               "x": 560, "y": 420, "type": "fitness"},
-    {"id": "loc-mens-hostel",  "name": "Men's Hostel",          "x": 700, "y": 350, "type": "residence"},
-    {"id": "loc-ladies-hostel","name": "Ladies Hostel",         "x": 100, "y": 500, "type": "residence"},
-    {"id": "loc-lawn",         "name": "Central Lawn",          "x": 360, "y": 300, "type": "recreation"},
+    # Entry
+    {"id": "loc-main-gate",    "name": "Main Gate",              "x":  60, "y": 540, "type": "entry"},
+    # Academic Zone (north / top)
+    {"id": "loc-ab1",          "name": "Academic Block 1 (AB-1)","x": 210, "y": 180, "type": "academic"},
+    {"id": "loc-ab2",          "name": "Academic Block 2 (AB-2)","x": 380, "y": 130, "type": "academic"},
+    {"id": "loc-ab3",          "name": "Academic Block 3 (AB-3)","x": 560, "y": 180, "type": "academic"},
+    {"id": "loc-library",      "name": "Central Library",        "x": 300, "y": 280, "type": "academic"},
+    {"id": "loc-admin",        "name": "Administrative Block",   "x": 480, "y": 300, "type": "academic"},
+    # Central
+    {"id": "loc-plaza",        "name": "Central Plaza",          "x": 390, "y": 380, "type": "recreation"},
+    {"id": "loc-amphi",        "name": "Amphitheatre",           "x": 230, "y": 400, "type": "event"},
+    # Food
+    {"id": "loc-mess",         "name": "Central Dining Hall",    "x": 350, "y": 470, "type": "food"},
+    {"id": "loc-cafe",         "name": "Foodys Cafeteria",       "x": 540, "y": 440, "type": "food"},
+    # Residence
+    {"id": "loc-boys-hostel",  "name": "Boys Hostel Block",      "x": 690, "y": 470, "type": "residence"},
+    {"id": "loc-girls-hostel", "name": "Girls Hostel Block",     "x": 130, "y": 470, "type": "residence"},
+    # Sports Zone (east)
+    {"id": "loc-sports",       "name": "Sports Complex",         "x": 680, "y": 230, "type": "fitness"},
+    {"id": "loc-cricket",      "name": "Cricket Ground",         "x": 720, "y": 340, "type": "fitness"},
+    # Utility
+    {"id": "loc-health",       "name": "Health Centre",          "x": 110, "y": 320, "type": "utility"},
+    {"id": "loc-bank",         "name": "SBI Branch & ATM",       "x": 170, "y": 260, "type": "utility"},
 ]
 
 SEED_QUESTS = [
-    {"id": "q-1", "title": "Sprint to the Summit",        "description": "Reach the top floor of Technology Tower within 5 minutes.",       "location": "Technology Tower",     "location_id": "loc-tt",         "xp_reward": 120, "difficulty": "medium", "category": "fitness",     "duration_min": 5,  "icon": "Zap"},
-    {"id": "q-2", "title": "Whispers of the Library",     "description": "Locate three rare books hidden across the Central Library.",       "location": "Central Library",       "location_id": "loc-library",    "xp_reward": 80,  "difficulty": "easy",   "category": "exploration", "duration_min": 15, "icon": "BookOpen"},
-    {"id": "q-3", "title": "Food Court Feast",            "description": "Try a dish you've never eaten before at the Food Court.",          "location": "Food Court",            "location_id": "loc-food-court", "xp_reward": 60,  "difficulty": "easy",   "category": "social",      "duration_min": 20, "icon": "Utensils"},
-    {"id": "q-4", "title": "Iron Will",                   "description": "Complete a 20-minute workout at the VIT Gym.",                     "location": "VIT Gym",               "location_id": "loc-gym",        "xp_reward": 150, "difficulty": "hard",   "category": "fitness",     "duration_min": 20, "icon": "Dumbbell"},
-    {"id": "q-5", "title": "Auditorium Enigma",           "description": "Find the hidden emblem etched inside Anna Auditorium.",            "location": "Anna Auditorium",       "location_id": "loc-anna-audi",  "xp_reward": 100, "difficulty": "medium", "category": "exploration", "duration_min": 10, "icon": "Search"},
-    {"id": "q-6", "title": "Campus Cartographer",         "description": "Walk to all six academic blocks in a single day.",                 "location": "SJT Block",             "location_id": "loc-sjt",        "xp_reward": 220, "difficulty": "hard",   "category": "fitness",     "duration_min": 60, "icon": "Map"},
-    {"id": "q-7", "title": "Social Sunrise",              "description": "Meet 3 new students on the Central Lawn before 9 AM.",             "location": "Central Lawn",          "location_id": "loc-lawn",       "xp_reward": 90,  "difficulty": "easy",   "category": "social",      "duration_min": 30, "icon": "Users"},
-    {"id": "q-8", "title": "Gatekeeper's Riddle",         "description": "Solve the riddle inscribed near the Main Gate.",                   "location": "Main Gate",             "location_id": "loc-main-gate",  "xp_reward": 70,  "difficulty": "easy",   "category": "exploration", "duration_min": 8,  "icon": "KeyRound"},
-    {"id": "q-9", "title": "SMV Study Sprint",            "description": "Attend a live lecture and take three insightful notes.",           "location": "SMV Block",             "location_id": "loc-smv",        "xp_reward": 110, "difficulty": "medium", "category": "academic",    "duration_min": 45, "icon": "GraduationCap"},
-    {"id": "q-10","title": "Sunset Stroll",               "description": "Walk from Ladies Hostel to Main Gate as the sun sets.",            "location": "Ladies Hostel",         "location_id": "loc-ladies-hostel","xp_reward": 60,"difficulty": "easy",  "category": "fitness",     "duration_min": 15, "icon": "Sun"},
-    {"id": "q-11","title": "Hostel Havoc",                "description": "Organize a group trivia in the Men's Hostel common room.",         "location": "Men's Hostel",          "location_id": "loc-mens-hostel","xp_reward": 130, "difficulty": "medium", "category": "social",      "duration_min": 40, "icon": "PartyPopper"},
-    {"id": "q-12","title": "Silver Jubilee Sprint",       "description": "Run 3 laps around Silver Jubilee Tower.",                          "location": "Silver Jubilee Tower",  "location_id": "loc-sjt",        "xp_reward": 170, "difficulty": "hard",   "category": "fitness",     "duration_min": 25, "icon": "Timer"},
+    {"id": "q-1",  "title": "Bhopal Gateway",              "description": "Snap a selfie at the VIT Bhopal Main Gate and share your arrival.",         "location": "Main Gate",              "location_id": "loc-main-gate",    "xp_reward":  70, "difficulty": "easy",   "category": "social",      "duration_min":  5,  "icon": "KeyRound"},
+    {"id": "q-2",  "title": "AB-1 Lecture Marathon",       "description": "Attend all your AB-1 classes back-to-back without skipping.",              "location": "Academic Block 1 (AB-1)","location_id": "loc-ab1",         "xp_reward": 110, "difficulty": "medium", "category": "academic",    "duration_min": 60,  "icon": "GraduationCap"},
+    {"id": "q-3",  "title": "AB-2 Innovation Sprint",      "description": "Build a working prototype in AB-2 makerspace in one afternoon.",           "location": "Academic Block 2 (AB-2)","location_id": "loc-ab2",         "xp_reward": 160, "difficulty": "hard",   "category": "academic",    "duration_min": 90,  "icon": "Zap"},
+    {"id": "q-4",  "title": "AB-3 Corridor Recon",         "description": "Explore every floor of AB-3 and note the department maps.",                "location": "Academic Block 3 (AB-3)","location_id": "loc-ab3",         "xp_reward":  90, "difficulty": "easy",   "category": "exploration", "duration_min": 20,  "icon": "Search"},
+    {"id": "q-5",  "title": "Library Whispers",            "description": "Find three rare books hidden across the Central Library stacks.",          "location": "Central Library",        "location_id": "loc-library",     "xp_reward":  80, "difficulty": "easy",   "category": "exploration", "duration_min": 15,  "icon": "BookOpen"},
+    {"id": "q-6",  "title": "Admin Block Errand",          "description": "Collect your bonafide letter from the Administrative Block in one visit.",  "location": "Administrative Block",   "location_id": "loc-admin",       "xp_reward":  60, "difficulty": "easy",   "category": "exploration", "duration_min": 15,  "icon": "KeyRound"},
+    {"id": "q-7",  "title": "Plaza Sunrise",               "description": "Meet 3 new students at the Central Plaza before 9 AM.",                     "location": "Central Plaza",          "location_id": "loc-plaza",       "xp_reward":  90, "difficulty": "easy",   "category": "social",      "duration_min": 30,  "icon": "Users"},
+    {"id": "q-8",  "title": "Amphitheatre Encore",         "description": "Perform or join a jam session at the campus Amphitheatre.",                 "location": "Amphitheatre",           "location_id": "loc-amphi",       "xp_reward": 130, "difficulty": "medium", "category": "social",      "duration_min": 40,  "icon": "PartyPopper"},
+    {"id": "q-9",  "title": "Mess Master Chef",            "description": "Try a Madhya Pradesh regional dish at the Central Dining Hall.",            "location": "Central Dining Hall",    "location_id": "loc-mess",        "xp_reward":  60, "difficulty": "easy",   "category": "social",      "duration_min": 20,  "icon": "Utensils"},
+    {"id": "q-10", "title": "Foodys Feast",                "description": "Order the secret menu combo at Foodys Cafeteria.",                          "location": "Foodys Cafeteria",       "location_id": "loc-cafe",        "xp_reward":  70, "difficulty": "easy",   "category": "social",      "duration_min": 15,  "icon": "Utensils"},
+    {"id": "q-11", "title": "Boys Hostel Trivia Night",    "description": "Organize a group trivia in the Boys Hostel common room.",                   "location": "Boys Hostel Block",      "location_id": "loc-boys-hostel", "xp_reward": 130, "difficulty": "medium", "category": "social",      "duration_min": 40,  "icon": "PartyPopper"},
+    {"id": "q-12", "title": "Sunset Stroll",               "description": "Walk from Girls Hostel to Main Gate as the sun sets over Bhopal.",          "location": "Girls Hostel Block",     "location_id": "loc-girls-hostel","xp_reward":  60, "difficulty": "easy",   "category": "fitness",     "duration_min": 15,  "icon": "Sun"},
+    {"id": "q-13", "title": "Iron Will",                   "description": "Complete a 20-minute workout at the Sports Complex.",                        "location": "Sports Complex",         "location_id": "loc-sports",      "xp_reward": 150, "difficulty": "hard",   "category": "fitness",     "duration_min": 20,  "icon": "Dumbbell"},
+    {"id": "q-14", "title": "Cricket Ground Sprint",       "description": "Run 3 laps around the Cricket Ground boundary.",                             "location": "Cricket Ground",         "location_id": "loc-cricket",     "xp_reward": 170, "difficulty": "hard",   "category": "fitness",     "duration_min": 25,  "icon": "Timer"},
+    {"id": "q-15", "title": "Wellness Check",              "description": "Visit the Health Centre for a free fitness assessment.",                     "location": "Health Centre",          "location_id": "loc-health",      "xp_reward":  80, "difficulty": "easy",   "category": "fitness",     "duration_min": 20,  "icon": "Zap"},
+    {"id": "q-16", "title": "Bhopal Campus Cartographer",  "description": "Walk to every academic block in a single day.",                              "location": "AB-3",                   "location_id": "loc-ab3",         "xp_reward": 220, "difficulty": "hard",   "category": "fitness",     "duration_min": 60,  "icon": "Map"},
 ]
 
 
