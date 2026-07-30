@@ -74,7 +74,8 @@ export default function App() {
         <BrowserRouter>
           <AppRoutes />
           <Toaster
-            position="top-center"
+            position="bottom-center"
+            offset={100}
             theme="dark"
             toastOptions={{
               style: {

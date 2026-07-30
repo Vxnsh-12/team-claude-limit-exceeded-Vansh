@@ -115,11 +115,13 @@ export default function MapPage() {
                 onClick={() => hasQuest && openQuestForLocation(loc.id)}
                 data-testid={`map-pin-${loc.id}`}
               >
+                {/* Invisible hit target for reliable clicks across the entire pin area */}
+                <circle r="24" fill="transparent" pointerEvents="all" />
                 {hasQuest && (
-                  <circle r="18" fill={color} fillOpacity="0.35" className="pulse-ring" style={{ transformOrigin: "center" }} />
+                  <circle r="18" fill={color} fillOpacity="0.35" className="pulse-ring" style={{ transformOrigin: "center" }} pointerEvents="none" />
                 )}
-                <circle r="8" fill={color} />
-                <circle r="8" fill="none" stroke="#050505" strokeWidth="2" />
+                <circle r="8" fill={color} pointerEvents="none" />
+                <circle r="8" fill="none" stroke="#050505" strokeWidth="2" pointerEvents="none" />
               </g>
             );
           })}
