@@ -966,9 +966,12 @@ async def startup_event():
 app.include_router(api_router)
 
 allowed_origins = [
+    "https://team-claude-limit-exceeded-vansh.vercel.app",
+    "https://team-claude-limit-exceeded-vansh.vercel.app/",
+    "http://localhost:5173",
+    "http://localhost:3000",
     "https://team-claude-limit-exceeded-vansh-10.onrender.com",
     "https://team-claude-limit-exceeded-vansh-10.vercel.app",
-    "https://team-claude-limit-exceeded-vansh.vercel.app",
 ]
 
 app.add_middleware(
