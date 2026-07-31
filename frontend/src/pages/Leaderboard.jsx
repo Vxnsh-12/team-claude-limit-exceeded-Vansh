@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Crown, Medal, Trophy, UserPlus, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,14 +18,14 @@ export default function Leaderboard() {
   const [friendIds, setFriendIds] = useState(new Set());
   const [sending, setSending] = useState(null);
 
-  // MOCK DATA: If the API fails or is empty, show this to the judges!
-  const mockLeaderboard = [
+  // MOCK DATA: Memoized to prevent unnecessary re-triggers and satisfy exhaustive-deps
+  const mockLeaderboard = useMemo(() => [
     { id: "mock1", name: "Alex Chen", rank: 1, level: 12, xp: 14500, avatar_url: null, is_you: false },
     { id: "mock2", name: "Sarah J.", rank: 2, level: 10, xp: 12200, avatar_url: null, is_you: false },
     { id: "mock3", name: "You (Student)", rank: 3, level: 9, xp: 9800, avatar_url: null, is_you: true },
     { id: "mock4", name: "David Kim", rank: 4, level: 7, xp: 7400, avatar_url: null, is_you: false },
     { id: "mock5", name: "Emma W.", rank: 5, level: 5, xp: 4200, avatar_url: null, is_you: false }
-  ];
+  ], []);
 
   useEffect(() => {
     api.get(`/leaderboard?scope=${scope}`)
@@ -52,7 +52,7 @@ export default function Leaderboard() {
         // If the API crashes, still show the mock data
         setRows(mockLeaderboard);
       });
-  }, [scope]);
+  }, [scope, mockLeaderboard]);
 
   useEffect(() => {
     api.get("/friends").then(({ data }) => {
