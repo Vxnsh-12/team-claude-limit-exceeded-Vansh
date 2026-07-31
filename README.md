@@ -1,4 +1,4 @@
-# 🎓 CampusQuest
+# 🎓 VITLAS
 
 **An Immersive, Gamified Student Ecosystem**
 
