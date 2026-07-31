@@ -4,7 +4,7 @@ import uuid
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://quest-design-kit.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://team-claude-limit-exceeded-vansh-10.onrender.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 PLAYER_EMAIL = "player@vitquest.com"
