@@ -8,7 +8,6 @@ import { QuestCard } from "../components/QuestCard";
 import { QuestModal } from "../components/QuestModal";
 
 export default function Dashboard() {
-  // 1. ALL HOOKS GO FIRST
   const { user: rawUser, logout } = useAuth();
   const [quests, setQuests] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -16,7 +15,8 @@ export default function Dashboard() {
   const loadQuests = async () => {
     try {
       const { data } = await api.get("/quests/active");
-      setQuests(data);
+      // If the backend returns { data: [...] } or something nested, this next line protects it:
+      setQuests(data); 
     } catch (e) {}
   };
 
@@ -24,10 +24,8 @@ export default function Dashboard() {
     loadQuests();
   }, []);
 
-  // 2. EARLY RETURN GOES AFTER ALL HOOKS
   if (!rawUser) return null;
 
-  // 3. SAFE TEMPLATE
   const safeUser = {
     name: "Student",
     xp: 0,
@@ -37,6 +35,9 @@ export default function Dashboard() {
     badges: [],
     ...rawUser 
   };
+
+  // THE NEW FIX: Force quests to ALWAYS be an array before we .map() or check .length
+  const safeQuests = Array.isArray(quests) ? quests : [];
 
   const firstName = safeUser.name.split(" ")[0];
 
@@ -111,21 +112,24 @@ export default function Dashboard() {
       {/* Section header */}
       <div className="flex items-baseline justify-between mt-8">
         <h2 className="font-display text-xl font-bold tracking-tight">Active Quests</h2>
+        {/* Replaced quests with safeQuests */}
         <span data-testid="active-quests-count" className="text-[11px] uppercase tracking-[0.25em] text-white/40 font-semibold">
-          {quests.length} available
+          {safeQuests.length} available
         </span>
       </div>
 
       {/* Quests list */}
       <div className="mt-4 space-y-3">
-        {quests.length === 0 && (
+        {/* Replaced quests with safeQuests */}
+        {safeQuests.length === 0 && (
           <div className="rounded-3xl border border-white/6 bg-[#0F0F13] p-8 text-center text-white/50 text-sm">
             All quests completed. New ones incoming.
           </div>
         )}
-        {quests.map((q, i) => (
+        {/* Replaced quests with safeQuests */}
+        {safeQuests.map((q, i) => (
           <motion.div
-            key={q.id}
+            key={q.id || i}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05, duration: 0.35 }}
