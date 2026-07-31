@@ -5,7 +5,7 @@ export const API = `${BACKEND_URL}/api`;
 
 export const api = axios.create({
   baseURL: API,
-  withCredentials: true,
+  withCredentials: false,
 });
 
 // Also attach Bearer token as fallback for envs where 3rd-party cookies get blocked.
