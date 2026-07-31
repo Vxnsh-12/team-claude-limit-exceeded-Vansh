@@ -25,6 +25,7 @@ export default function Dashboard() {
 
   if (!user) return null;
 
+  // Safe split: Falls back to "Student" if user.name is undefined
   const firstName = (user?.name || "Student").split(" ")[0];
 
   return (
@@ -68,27 +69,31 @@ export default function Dashboard() {
         <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-[#00E5FF]/8 blur-3xl pointer-events-none" />
         <div className="absolute -left-6 bottom-0 w-32 h-32 rounded-full bg-[#39FF14]/6 blur-3xl pointer-events-none" />
         <div className="relative flex items-center gap-5">
-          <LevelRing xp={user.xp} level={user.level} />
+          {/* Safe level and XP */}
+          <LevelRing xp={user?.xp || 0} level={user?.level || 1} />
           <div className="flex-1 space-y-3">
             <MetricRow
               icon={Flame}
               tint="#FF8A3D"
               label="Streak"
-              value={`${user.streak_days} days`}
+              {/* Safe streak check */}
+              value={`${user?.streak_days || 0} days`}
               testid="stat-streak"
             />
             <MetricRow
               icon={Trophy}
               tint="#39FF14"
               label="Quests"
-              value={`${user.completed_quests.length} done`}
+              {/* Safe array length check for completed_quests */}
+              value={`${user?.completed_quests?.length || 0} done`}
               testid="stat-quests-done"
             />
             <MetricRow
               icon={Award}
               tint="#00E5FF"
               label="Badges"
-              value={`${user.badges.length} earned`}
+              {/* Safe array length check for badges */}
+              value={`${user?.badges?.length || 0} earned`}
               testid="stat-badges"
             />
           </div>
