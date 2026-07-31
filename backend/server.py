@@ -968,6 +968,7 @@ app.include_router(api_router)
 allowed_origins = [
     "https://team-claude-limit-exceeded-vansh-10.onrender.com",
     "https://team-claude-limit-exceeded-vansh-10.vercel.app",
+    "https://team-claude-limit-exceeded-vansh.vercel.app",
 ]
 
 app.add_middleware(
