@@ -965,10 +965,15 @@ async def startup_event():
 
 app.include_router(api_router)
 
+allowed_origins = [
+    "https://team-claude-limit-exceeded-vansh-10.onrender.com",
+    "https://team-claude-limit-exceeded-vansh-10.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
