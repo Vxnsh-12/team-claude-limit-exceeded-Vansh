@@ -6,27 +6,15 @@ import { api } from "@/lib/api";
 import { useAuth } from "../context/AuthContext";
 
 export default function CampusHubPage() {
+  // 1. ALL HOOKS GO FIRST (useState, useRef, useEffect)
   const { user: rawUser } = useAuth();
   const [syncing, setSyncing] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
   const [uploaded, setUploaded] = useState(null);
+  
   const alertFiredRef = useRef(false);
   const fileInputRef = useRef(null);
-
-  if (!rawUser) return null;
-
-  const safeUser = {
-    name: "Student",
-    xp: 0,
-    level: 1,
-    streak_days: 0,
-    completed_quests: [],
-    badges: [],
-    createdAt: Date.now(),
-    ...rawUser,
-  };
-  const safeUploaded = uploaded && typeof uploaded === "object" ? uploaded : null;
-
+  
   // Mock next-class time = mount + 15 min + 12 sec, so the alert fires ~12 s after entering the tab.
   const classStartRef = useRef(new Date(Date.now() + (15 * 60 + 12) * 1000));
 
@@ -39,6 +27,7 @@ export default function CampusHubPage() {
         setAlertOpen(true);
       }
     }, 5000);
+    
     api.get("/timetable/me").then(({ data }) => {
       if (data && typeof data === "object" && data.has_timetable) {
         setUploaded(data);
@@ -46,8 +35,26 @@ export default function CampusHubPage() {
         setUploaded(null);
       }
     }).catch(() => {});
+    
     return () => clearInterval(timer);
   }, []);
+
+  // 2. EARLY RETURN GOES AFTER ALL HOOKS
+  if (!rawUser) return null;
+
+  // 3. VARIABLES & FUNCTIONS
+  const safeUser = {
+    name: "Student",
+    xp: 0,
+    level: 1,
+    streak_days: 0,
+    completed_quests: [],
+    badges: [],
+    createdAt: Date.now(),
+    ...rawUser,
+  };
+  
+  const safeUploaded = uploaded && typeof uploaded === "object" ? uploaded : null;
 
   const handleSync = async () => {
     if (fileInputRef.current) fileInputRef.current.click();

@@ -17,6 +17,7 @@ const badgeDefs = {
 };
 
 export default function Profile() {
+  // 1. ALL HOOKS AND THEIR DEPENDENCIES GO FIRST
   const { user: rawUser, logout, setUser, refreshUser } = useAuth();
   const [tab, setTab] = useState("mine"); // "mine" | "feed"
   const [mine, setMine] = useState([]);
@@ -24,8 +25,29 @@ export default function Profile() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInput = useRef(null);
 
+  const loadMine = async () => {
+    try {
+      const { data } = await api.get("/uploads/mine");
+      setMine(Array.isArray(data) ? data : []);
+    } catch {}
+  };
+  
+  const loadFeed = async () => {
+    try {
+      const { data } = await api.get("/feed");
+      setFeed(Array.isArray(data) ? data : []);
+    } catch {}
+  };
+
+  useEffect(() => {
+    loadMine();
+    loadFeed();
+  }, []);
+
+  // 2. EARLY RETURN GOES AFTER ALL HOOKS
   if (!rawUser) return null;
 
+  // 3. SAFE TEMPLATES AND HANDLERS
   const safeUser = {
     name: "Student",
     xp: 0,
@@ -39,24 +61,6 @@ export default function Profile() {
 
   const safeMine = Array.isArray(mine) ? mine : [];
   const safeFeed = Array.isArray(feed) ? feed : [];
-
-  const loadMine = async () => {
-    try {
-      const { data } = await api.get("/uploads/mine");
-      setMine(Array.isArray(data) ? data : []);
-    } catch {}
-  };
-  const loadFeed = async () => {
-    try {
-      const { data } = await api.get("/feed");
-      setFeed(Array.isArray(data) ? data : []);
-    } catch {}
-  };
-
-  useEffect(() => {
-    loadMine();
-    loadFeed();
-  }, []);
 
   const handleAvatarPick = async (e) => {
     const f = e.target.files?.[0];
