@@ -965,19 +965,26 @@ async def startup_event():
 
 app.include_router(api_router)
 
-allowed_origins = [
-    "https://team-claude-limit-exceeded-vansh.vercel.app",
-    "https://team-claude-limit-exceeded-vansh.vercel.app/",
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "https://team-claude-limit-exceeded-vansh-10.onrender.com",
-    "https://team-claude-limit-exceeded-vansh-10.vercel.app",
-]
+cors_origin_env = os.environ.get("CORS_ORIGINS", "").strip()
+if cors_origin_env:
+    allowed_origins = [
+        origin.strip() for origin in cors_origin_env.split(",") if origin.strip() and origin.strip() != "*"
+    ]
+else:
+    allowed_origins = [
+        "https://team-claude-limit-exceeded-vansh.vercel.app",
+        "https://team-claude-limit-exceeded-vansh.vercel.app/",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://team-claude-limit-exceeded-vansh-10.onrender.com",
+        "https://team-claude-limit-exceeded-vansh-10.vercel.app",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https://team-claude-limit-exceeded-vansh(?:-10)?\.vercel\.app/?$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
