@@ -23,8 +23,9 @@ from storage import init_storage, put_object, get_object, APP_NAME
 
 
 # ----- Mongo setup -----
-mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+mongo_url = os.environ.get("MONGO_URL","mongodb+srv://user3235:yEmHR7CMF.aSATJ@medmind.kwprvlu.mongodb.net/")
 client = AsyncIOMotorClient(mongo_url)
+DB_NAME = os.environ.get("DB_NAME", "campus_db")
 db = client[os.environ['DB_NAME']]
 
 # ----- JWT config -----
