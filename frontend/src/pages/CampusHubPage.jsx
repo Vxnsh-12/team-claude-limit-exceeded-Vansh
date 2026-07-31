@@ -3,13 +3,29 @@ import { UploadCloud, Loader2, MapPin, Clock, User, AlertTriangle, X, FileCheck2
 import { toast } from "sonner";
 import Dashboard from "@/pages/Dashboard";
 import { api } from "@/lib/api";
+import { useAuth } from "../context/AuthContext";
 
 export default function CampusHubPage() {
+  const { user: rawUser } = useAuth();
   const [syncing, setSyncing] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
   const [uploaded, setUploaded] = useState(null);
   const alertFiredRef = useRef(false);
   const fileInputRef = useRef(null);
+
+  if (!rawUser) return null;
+
+  const safeUser = {
+    name: "Student",
+    xp: 0,
+    level: 1,
+    streak_days: 0,
+    completed_quests: [],
+    badges: [],
+    createdAt: Date.now(),
+    ...rawUser,
+  };
+  const safeUploaded = uploaded && typeof uploaded === "object" ? uploaded : null;
 
   // Mock next-class time = mount + 15 min + 12 sec, so the alert fires ~12 s after entering the tab.
   const classStartRef = useRef(new Date(Date.now() + (15 * 60 + 12) * 1000));
@@ -23,7 +39,13 @@ export default function CampusHubPage() {
         setAlertOpen(true);
       }
     }, 5000);
-    api.get("/timetable/me").then(({ data }) => data?.has_timetable && setUploaded(data)).catch(() => {});
+    api.get("/timetable/me").then(({ data }) => {
+      if (data && typeof data === "object" && data.has_timetable) {
+        setUploaded(data);
+      } else {
+        setUploaded(null);
+      }
+    }).catch(() => {});
     return () => clearInterval(timer);
   }, []);
 
@@ -47,7 +69,7 @@ export default function CampusHubPage() {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const { data } = await api.get("/timetable/me");
-      setUploaded(data);
+      setUploaded(data && typeof data === "object" ? data : null);
       toast("✅ VTOP Schedule Synced Successfully", {
         style: {
           background: "#0F0F13",
@@ -100,7 +122,7 @@ export default function CampusHubPage() {
           className="mt-4 w-full h-11 rounded-full bg-black/85 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-black transition-colors active:scale-[0.98] disabled:opacity-70"
         >
           {syncing ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
-          {syncing ? "Syncing VTOP…" : uploaded ? "Replace Timetable" : "Upload VTOP Timetable"}
+          {syncing ? "Syncing VTOP…" : safeUploaded ? "Replace Timetable" : "Upload VTOP Timetable"}
         </button>
         <input
           ref={fileInputRef}
@@ -110,13 +132,13 @@ export default function CampusHubPage() {
           className="hidden"
           onChange={onFilePicked}
         />
-        {uploaded && (
+        {safeUploaded && (
           <div
             data-testid="vtop-uploaded-info"
             className="mt-2 flex items-center gap-2 text-black/85 text-[11px] font-bold"
           >
             <FileCheck2 size={12} />
-            <span className="truncate">{uploaded.filename}</span>
+            <span className="truncate">{safeUploaded.filename}</span>
           </div>
         )}
       </div>

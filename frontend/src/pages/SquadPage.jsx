@@ -20,11 +20,14 @@ export default function SquadPage() {
   const [locBusy, setLocBusy] = useState(false);
   const [joinBusy, setJoinBusy] = useState(null);
 
+  const safeNearby = Array.isArray(nearby) ? nearby : [];
+  const safeGroups = Array.isArray(groups) ? groups : [];
+
   const loadGroups = async () => {
-    try { const { data } = await api.get("/groups"); setGroups(data); } catch {}
+    try { const { data } = await api.get("/groups"); setGroups(Array.isArray(data) ? data : []); } catch {}
   };
   const loadNearby = async () => {
-    try { const { data } = await api.get("/users/nearby?radius_m=50"); setNearby(data); } catch {}
+    try { const { data } = await api.get("/users/nearby?radius_m=50"); setNearby(Array.isArray(data) ? data : []); } catch {}
   };
   useEffect(() => { loadGroups(); loadNearby(); }, []);
 
@@ -49,7 +52,7 @@ export default function SquadPage() {
     try {
       const { data } = await api.post("/friends/requests", { to_user_id: uid });
       toast(data.status === "accepted" ? `🎉 You're now friends with ${name}` : `✅ Friend request sent to ${name}`);
-      setNearby((cur) => cur.map((u) => u.id === uid ? { ...u, friend_status: data.status === "accepted" ? "friends" : "requested" } : u));
+      setNearby((cur) => (Array.isArray(cur) ? cur.map((u) => u.id === uid ? { ...u, friend_status: data.status === "accepted" ? "friends" : "requested" } : u) : []));
     } catch (e) { toast.error(e.response?.data?.detail || "Failed to send request"); }
   };
 
@@ -106,12 +109,12 @@ export default function SquadPage() {
         </button>
       </div>
       <div className="mt-3 space-y-2">
-        {nearby.length === 0 && (
+        {safeNearby.length === 0 && (
           <div data-testid="nearby-empty" className="rounded-2xl border border-white/6 bg-[#0F0F13] p-4 text-center text-white/50 text-xs">
             Tap Scan to share your location and find classmates within 50 m.
           </div>
         )}
-        {nearby.map((u) => (
+        {safeNearby.map((u) => (
           <div key={u.id} data-testid={`nearby-${u.id}`} className="rounded-2xl bg-[#0F0F13] border border-white/6 p-3 flex items-center gap-3">
             <img src={resolveMediaUrl(u.avatar_url)} alt={u.name} className="h-10 w-10 rounded-full ring-1 ring-white/10 bg-[#1A1A24]" />
             <div className="flex-1 min-w-0">
@@ -129,7 +132,7 @@ export default function SquadPage() {
           <Users2 size={16} className="text-[#C084FC]" /> Study Groups
         </h2>
         <div className="mt-3 space-y-2">
-          {groups.map((g) => {
+          {safeGroups.map((g) => {
             const Icon = groupIcons[g.icon] || Users2;
             const busy = joinBusy === g.id;
             return (
@@ -167,7 +170,7 @@ export default function SquadPage() {
 }
 
 export const FriendActionBtn = ({ user, onAdd, testid }) => {
-  const s = user.friend_status;
+  const s = user?.friend_status;
   if (s === "self") return null;
   if (s === "friends")
     return <span className="h-8 px-3 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#39FF14]/15 border border-[#39FF14]/50 text-[#39FF14] flex items-center gap-1"><Check size={11} /> Friends</span>;

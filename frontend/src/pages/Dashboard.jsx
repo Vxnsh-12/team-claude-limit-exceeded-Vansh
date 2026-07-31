@@ -8,14 +8,29 @@ import { QuestCard } from "../components/QuestCard";
 import { QuestModal } from "../components/QuestModal";
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user: rawUser, logout } = useAuth();
   const [quests, setQuests] = useState([]);
   const [selected, setSelected] = useState(null);
+
+  if (!rawUser) return null;
+
+  const safeUser = {
+    name: "Student",
+    xp: 0,
+    level: 1,
+    streak_days: 0,
+    completed_quests: [],
+    badges: [],
+    createdAt: Date.now(),
+    ...rawUser,
+  };
+
+  const safeQuests = Array.isArray(quests) ? quests : [];
 
   const loadQuests = async () => {
     try {
       const { data } = await api.get("/quests/active");
-      setQuests(data);
+      setQuests(Array.isArray(data) ? data : []);
     } catch (e) {}
   };
 
@@ -23,9 +38,7 @@ export default function Dashboard() {
     loadQuests();
   }, []);
 
-  if (!user) return null;
-
-  const firstName = (user?.name || "Student").split(" ")[0];
+  const firstName = (safeUser.name || "Student").split(" ")[0];
 
   return (
     <div className="px-6 pt-8">
@@ -68,27 +81,27 @@ export default function Dashboard() {
         <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-[#00E5FF]/8 blur-3xl pointer-events-none" />
         <div className="absolute -left-6 bottom-0 w-32 h-32 rounded-full bg-[#39FF14]/6 blur-3xl pointer-events-none" />
         <div className="relative flex items-center gap-5">
-          <LevelRing xp={user?.xp || 0} level={user?.level || 1} />
+          <LevelRing xp={safeUser.xp} level={safeUser.level} />
           <div className="flex-1 space-y-3">
             <MetricRow
               icon={Flame}
               tint="#FF8A3D"
               label="Streak"
-              value={`${user?.streak_days || 0} days`}
+              value={`${safeUser.streak_days} days`}
               testid="stat-streak"
             />
             <MetricRow
               icon={Trophy}
               tint="#39FF14"
               label="Quests"
-              value={`${user?.completed_quests?.length || 0} done`}
+              value={`${safeUser.completed_quests.length} done`}
               testid="stat-quests-done"
             />
             <MetricRow
               icon={Award}
               tint="#00E5FF"
               label="Badges"
-              value={`${user?.badges?.length || 0} earned`}
+              value={`${safeUser.badges.length} earned`}
               testid="stat-badges"
             />
           </div>
@@ -99,18 +112,18 @@ export default function Dashboard() {
       <div className="flex items-baseline justify-between mt-8">
         <h2 className="font-display text-xl font-bold tracking-tight">Active Quests</h2>
         <span data-testid="active-quests-count" className="text-[11px] uppercase tracking-[0.25em] text-white/40 font-semibold">
-          {quests.length} available
+          {safeQuests.length} available
         </span>
       </div>
 
       {/* Quests list */}
       <div className="mt-4 space-y-3">
-        {quests.length === 0 && (
+        {safeQuests.length === 0 && (
           <div className="rounded-3xl border border-white/6 bg-[#0F0F13] p-8 text-center text-white/50 text-sm">
             All quests completed. New ones incoming.
           </div>
         )}
-        {quests.map((q, i) => (
+        {safeQuests.map((q, i) => (
           <motion.div
             key={q.id}
             initial={{ opacity: 0, y: 12 }}

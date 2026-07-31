@@ -17,23 +17,39 @@ const badgeDefs = {
 };
 
 export default function Profile() {
-  const { user, logout, setUser, refreshUser } = useAuth();
+  const { user: rawUser, logout, setUser, refreshUser } = useAuth();
   const [tab, setTab] = useState("mine"); // "mine" | "feed"
   const [mine, setMine] = useState([]);
   const [feed, setFeed] = useState([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInput = useRef(null);
 
+  if (!rawUser) return null;
+
+  const safeUser = {
+    name: "Student",
+    xp: 0,
+    level: 1,
+    streak_days: 0,
+    completed_quests: [],
+    badges: [],
+    createdAt: Date.now(),
+    ...rawUser,
+  };
+
+  const safeMine = Array.isArray(mine) ? mine : [];
+  const safeFeed = Array.isArray(feed) ? feed : [];
+
   const loadMine = async () => {
     try {
       const { data } = await api.get("/uploads/mine");
-      setMine(data);
+      setMine(Array.isArray(data) ? data : []);
     } catch {}
   };
   const loadFeed = async () => {
     try {
       const { data } = await api.get("/feed");
-      setFeed(data);
+      setFeed(Array.isArray(data) ? data : []);
     } catch {}
   };
 
@@ -41,8 +57,6 @@ export default function Profile() {
     loadMine();
     loadFeed();
   }, []);
-
-  if (!user) return null;
 
   const handleAvatarPick = async (e) => {
     const f = e.target.files?.[0];
@@ -58,7 +72,7 @@ export default function Profile() {
       const { data } = await api.post("/uploads/avatar", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setUser({ ...user, avatar_url: data.avatar_url });
+      setUser({ ...safeUser, avatar_url: data.avatar_url });
       await refreshUser();
       toast.success("Avatar updated");
       loadMine();
@@ -74,7 +88,7 @@ export default function Profile() {
     const next = !upload.is_public;
     try {
       const { data } = await api.put(`/uploads/${upload.id}/visibility?is_public=${next}`);
-      setMine((prev) => prev.map((u) => (u.id === upload.id ? data : u)));
+      setMine((prev) => (Array.isArray(prev) ? prev.map((u) => (u.id === upload.id ? data : u)) : []));
       toast.success(next ? "Shared to public feed" : "Set to private");
       loadFeed();
     } catch (e) {
@@ -109,13 +123,13 @@ export default function Profile() {
         <div className="relative flex items-center gap-5">
           <div className="relative">
             <img
-              src={resolveMediaUrl(user.avatar_url)}
-              alt={user.name}
+              src={resolveMediaUrl(safeUser.avatar_url)}
+              alt={safeUser.name}
               className="h-24 w-24 rounded-full bg-[#1A1A24] object-cover ring-2 ring-[#00E5FF]/60"
               style={{ boxShadow: "0 0 30px rgba(0,229,255,0.35)" }}
             />
             <div className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-[#39FF14] text-black flex items-center justify-center font-display font-black text-xs">
-              L{user.level}
+              L{safeUser.level}
             </div>
             <button
               type="button"
@@ -138,15 +152,15 @@ export default function Profile() {
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="font-display text-2xl font-black tracking-tight truncate">
-              {user.name}
+              {safeUser.name}
             </h2>
-            <p className="text-xs text-white/50 truncate">{user.email}</p>
+            <p className="text-xs text-white/50 truncate">{safeUser.email}</p>
             <div className="mt-3 flex items-center gap-2">
               <span className="glass rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                 <MapPin size={10} className="text-[#00E5FF]" /> VIT Bhopal
               </span>
               <span className="glass rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                <Flame size={10} className="text-[#FF8A3D]" /> {user.streak_days}d streak
+                <Flame size={10} className="text-[#FF8A3D]" /> {safeUser.streak_days}d streak
               </span>
             </div>
           </div>
@@ -154,11 +168,11 @@ export default function Profile() {
 
         {/* Level ring + XP */}
         <div className="mt-6 flex items-center gap-5">
-          <LevelRing xp={user.xp} level={user.level} size={120} stroke={9} />
+          <LevelRing xp={safeUser.xp} level={safeUser.level} size={120} stroke={9} />
           <div className="flex-1 grid grid-cols-1 gap-2">
-            <StatTile icon={Zap} tint="#39FF14" label="Total XP" value={user.xp.toLocaleString()} />
-            <StatTile icon={Trophy} tint="#00E5FF" label="Quests" value={user.completed_quests.length} />
-            <StatTile icon={Sparkles} tint="#C084FC" label="Badges" value={user.badges.length} />
+            <StatTile icon={Zap} tint="#39FF14" label="Total XP" value={safeUser.xp.toLocaleString()} />
+            <StatTile icon={Trophy} tint="#00E5FF" label="Quests" value={safeUser.completed_quests.length} />
+            <StatTile icon={Sparkles} tint="#C084FC" label="Badges" value={safeUser.badges.length} />
           </div>
         </div>
       </motion.div>
@@ -167,7 +181,7 @@ export default function Profile() {
       <h3 className="font-display text-lg font-bold tracking-tight mt-8">Badges</h3>
       <div className="mt-3 grid grid-cols-4 gap-2">
         {Object.entries(badgeDefs).map(([key, def]) => {
-          const owned = user.badges.includes(key);
+          const owned = safeUser.badges.includes(key);
           const Icon = def.icon;
           return (
             <div
@@ -196,18 +210,18 @@ export default function Profile() {
       {/* Gallery tabs */}
       <div className="flex items-center gap-2 mt-8">
         <TabBtn active={tab === "mine"} onClick={() => setTab("mine")} testid="tab-mine">
-          My Gallery ({mine.length})
+          My Gallery ({safeMine.length})
         </TabBtn>
         <TabBtn active={tab === "feed"} onClick={() => setTab("feed")} testid="tab-feed">
-          Community ({feed.length})
+          Community ({safeFeed.length})
         </TabBtn>
       </div>
 
       <div className="mt-4">
         {tab === "mine" ? (
-          <MyGallery items={mine} onToggle={toggleVisibility} />
+          <MyGallery items={safeMine} onToggle={toggleVisibility} />
         ) : (
-          <CommunityFeed items={feed} />
+          <CommunityFeed items={safeFeed} />
         )}
       </div>
     </div>

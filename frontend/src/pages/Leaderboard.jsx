@@ -10,11 +10,17 @@ export default function Leaderboard() {
   const [friendIds, setFriendIds] = useState(new Set());
   const [sending, setSending] = useState(null);
 
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const safeFriendIds = Array.isArray(friendIds) ? friendIds : [];
+
   useEffect(() => {
-    api.get(`/leaderboard?scope=${scope}`).then(({ data }) => setRows(data));
+    api.get(`/leaderboard?scope=${scope}`).then(({ data }) => setRows(Array.isArray(data) ? data : []));
   }, [scope]);
   useEffect(() => {
-    api.get("/friends").then(({ data }) => setFriendIds(new Set(data.map((u) => u.id)))).catch(() => {});
+    api.get("/friends").then(({ data }) => {
+      const ids = Array.isArray(data) ? data.map((u) => u?.id).filter(Boolean) : [];
+      setFriendIds(new Set(ids));
+    }).catch(() => {});
   }, []);
 
   const addFriend = async (r) => {
@@ -32,8 +38,8 @@ export default function Leaderboard() {
     } finally { setSending(null); }
   };
 
-  const top3 = rows.slice(0, 3);
-  const rest = rows.slice(3);
+  const top3 = safeRows.slice(0, 3);
+  const rest = safeRows.slice(3);
 
   return (
     <div className="px-6 pt-8">
@@ -136,7 +142,7 @@ export default function Leaderboard() {
 }
 
 const Podium = ({ place, row, height, highlight }) => {
-  if (!row) return <div />;
+  if (!row || typeof row !== "object") return <div />;
   const Icon = place === 1 ? Crown : place === 2 ? Medal : Trophy;
   const accent = place === 1 ? "#39FF14" : place === 2 ? "#00E5FF" : "#C084FC";
   return (
@@ -161,7 +167,7 @@ const Podium = ({ place, row, height, highlight }) => {
         {row.name}
       </div>
       <div className="font-display font-black text-sm mt-0.5" style={{ color: accent }}>
-        {row.xp.toLocaleString()}
+        {(row.xp ?? 0).toLocaleString()}
       </div>
       <div
         className={`w-full mt-2 rounded-t-2xl border-t border-l border-r ${
