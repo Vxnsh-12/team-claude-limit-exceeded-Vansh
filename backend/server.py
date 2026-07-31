@@ -23,7 +23,7 @@ from storage import init_storage, put_object, get_object, APP_NAME
 
 
 # ----- Mongo setup -----
-mongo_url = os.environ[mongodb://localhost:27017]
+mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
