@@ -1,4 +1,4 @@
-# 🎓 VITLAS
+#  VITLAS
 
 **An Immersive, Gamified Student Ecosystem**
 
@@ -7,32 +7,32 @@ CampusQuest optimizes academic productivity, physical well-being, peer collabora
 
 ---
 
-## ✨ Core Features
+##  Core Features
 
-- **🗺️ Offline-Capable Navigation**  
+- ** Offline-Capable Navigation**  
   Advanced offline-first campus routing powered by MapTiler. Works even in areas with weak cellular or Wi-Fi coverage.
 
-- **🚧 Smart Obstacle Routing**  
+- ** Smart Obstacle Routing**  
   Dynamically recalculates walking paths around construction, blockages, or crowded zones so you always arrive on time.
 
-- **🏃 Health & Activity Quests**  
+- ** Health & Activity Quests**  
   Movement-based challenges that promote fitness. Earn health badges and maintain active streaks.
 
-- **📅 VTOP Schedule Sync & Alerts**  
+- ** VTOP Schedule Sync & Alerts**  
   Auto-syncs institutional timetables and sends precise advance warnings based on walking time from hostels/messes.
 
-- **🤝 Study Groups & Skill Profiling**  
+- ** Study Groups & Skill Profiling**  
   Discover peers by skills (Python, ML, Cybersecurity…) and form study groups with complementary strengths.
 
-- **🏆 Gamification & Leaderboard**  
+- ** Gamification & Leaderboard**  
   Earn XP, maintain streaks, collect achievement badges, and climb the global ranking system.
 
-- **📸 Community Proof Gallery**  
+- ** Community Proof Gallery**  
   Upload photo/video proof of completed quests in public or private view modes.
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 | Layer              | Technology              |
 |--------------------|-------------------------|
@@ -43,7 +43,7 @@ CampusQuest optimizes academic productivity, physical well-being, peer collabora
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ```bash
 git clone https://github.com/your-username/campusquest.git
